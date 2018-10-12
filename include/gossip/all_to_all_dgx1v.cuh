@@ -63,166 +63,116 @@ public:
             }
         }
 
-        uint64_t UL_src[num_gpus/2][num_gpus/2+1];
-        uint64_t UR_src[num_gpus/2][num_gpus/2+1];
-        uint64_t LL_src[num_gpus/2][num_gpus/2+1];
-        uint64_t LR_src[num_gpus/2][num_gpus/2+1];
+        uint64_t UL[num_gpus/2+1][num_gpus/2];
+        uint64_t UR[num_gpus/2+1][num_gpus/2];
+        uint64_t LL[num_gpus/2+1][num_gpus/2];
+        uint64_t LR[num_gpus/2+1][num_gpus/2];
 
-        for (uint64_t src = 0; src < num_gpus/2; src++) {
-            UL_src[src][0] = 0;
-            UR_src[src][0] = 0;
-            LL_src[src][0] = 0;
-            LR_src[src][0] = 0;
+        for (uint64_t trg = 0; trg < num_gpus/2; trg++) {
+            UL[0][trg] = 0;
+            UR[0][trg] = 0;
+            LL[0][trg] = 0;
+            LR[0][trg] = 0;
         }
 
         for (uint64_t src = 0; src < num_gpus/2; src++) {
             for (uint64_t trg = 0; trg < num_gpus/2; trg++) {
-                UL_src[src][trg+1] = UL_src[src][trg]
-                                   + table[src][trg];
-                UR_src[src][trg+1] = UR_src[src][trg]
-                                   + table[src][trg+num_gpus/2];
-                LL_src[src][trg+1] = LL_src[src][trg]
-                                   + table[src+num_gpus/2][trg];
-                LR_src[src][trg+1] = LR_src[src][trg]
-                                   + table[src+num_gpus/2][trg+num_gpus/2];
+                UL[src+1][trg] = UL[src][trg]
+                               + table[src][trg];
+                UR[src+1][trg] = UR[src][trg]
+                               + table[src][trg+num_gpus/2];
+                LL[src+1][trg] = LL[src][trg]
+                               + table[src+num_gpus/2][trg];
+                LR[src+1][trg] = LR[src][trg]
+                               + table[src+num_gpus/2][trg+num_gpus/2];
             }
         }
 
-        /*
-        std::cout << "UL" << std::endl;
-        for (uint64_t src = 0; src < num_gpus/2; src++)
-            for (uint64_t trg = 0; trg < num_gpus/2+1; trg++)
-                std::cout << UL_src[src][trg] << (trg == num_gpus/2 ? "\n" : " ");
-        std::cout << std::endl;
+        // std::cout << "UL" << std::endl;
+        // for (uint64_t src = 0; src < num_gpus/2+1; src++)
+        //     for (uint64_t trg = 0; trg < num_gpus/2; trg++)
+        //         std::cout << UL[src][trg] << (trg == num_gpus/2-1 ? "\n" : " ");
+        // std::cout << std::endl;
 
-        std::cout << "UR" << std::endl;
-        for (uint64_t src = 0; src < num_gpus/2; src++)
-            for (uint64_t trg = 0; trg < num_gpus/2+1; trg++)
-                std::cout << UR_src[src][trg] << (trg == num_gpus/2 ? "\n" : " ");
-        std::cout << std::endl;
+        // std::cout << "UR" << std::endl;
+        // for (uint64_t src = 0; src < num_gpus/2+1; src++)
+        //     for (uint64_t trg = 0; trg < num_gpus/2; trg++)
+        //         std::cout << UR[src][trg] << (trg == num_gpus/2-1 ? "\n" : " ");
+        // std::cout << std::endl;
 
-        std::cout << "LL" << std::endl;
-        for (uint64_t src = 0; src < num_gpus/2; src++)
-            for (uint64_t trg = 0; trg < num_gpus/2+1; trg++)
-                std::cout << LL_src[src][trg] << (trg == num_gpus/2 ? "\n" : " ");
-        std::cout << std::endl;
+        // std::cout << "LL" << std::endl;
+        // for (uint64_t src = 0; src < num_gpus/2+1; src++)
+        //     for (uint64_t trg = 0; trg < num_gpus/2; trg++)
+        //         std::cout << LL[src][trg] << (trg == num_gpus/2-1 ? "\n" : " ");
+        // std::cout << std::endl;
 
-        std::cout << "LR" << std::endl;
-        for (uint64_t src = 0; src < num_gpus/2; src++)
-            for (uint64_t trg = 0; trg < num_gpus/2+1; trg++)
-                std::cout << LR_src[src][trg] << (trg == num_gpus/2 ? "\n" : " ");
-        std::cout << std::endl;
-        */
+        // std::cout << "LR" << std::endl;
+        // for (uint64_t src = 0; src < num_gpus/2+1; src++)
+        //     for (uint64_t trg = 0; trg < num_gpus/2; trg++)
+        //         std::cout << LR[src][trg] << (trg == num_gpus/2-1 ? "\n" : " ");
+        // std::cout << std::endl;
 
-        uint64_t h_L_trg[num_gpus/2][num_gpus/2+1];
-        uint64_t h_R_trg[num_gpus/2][num_gpus/2+1];
 
-        for (uint64_t src = 0; src < num_gpus/2; src++) {
-            h_L_trg[src][0] = 0;
-            h_R_trg[src][0] = 0;
-        }
-
-        for (uint64_t src = 0; src < num_gpus/2; src++) {
-            for (uint64_t trg = 0; trg < num_gpus/2; trg++) {
-                h_L_trg[src][trg+1] = UL_src[src][trg+1]
-                                    + LL_src[src][trg+1];
-                h_R_trg[src][trg+1] = LR_src[src][trg+1]
-                                    + UR_src[src][trg+1];
-            }
-        }
-        
-        /*
-        std::cout << "h_L" << std::endl;
-        for (uint64_t src = 0; src < num_gpus/2; src++)
-            for (uint64_t trg = 0; trg < num_gpus/2+1; trg++)
-                std::cout << h_L_trg[src][trg] << (trg == num_gpus/2 ? "\n" : " ");
-        std::cout << std::endl;
-
-        std::cout << "h_R" << std::endl;
-        for (uint64_t src = 0; src < num_gpus/2; src++)
-            for (uint64_t trg = 0; trg < num_gpus/2+1; trg++)
-                std::cout << h_R_trg[src][trg] << (trg == num_gpus/2 ? "\n" : " ");
-        std::cout << std::endl;
-        */
-
-        for (uint64_t gpu = 0; gpu < num_gpus/2; gpu++) {
-            if (h_L_trg[gpu][num_gpus/2] > dsts_lens[gpu])
+        // check if sufficient space for phase 1
+        for (uint64_t trg = 0; trg < num_gpus/2; trg++) {
+            if (UL[num_gpus/2][trg] + UR[num_gpus/2][trg] > dsts_lens[trg])
                 if (throw_exceptions)
                     throw std::invalid_argument(
                         "dsts_lens not compatible with partition_table.");
                 else return false;
-            if (h_R_trg[gpu][num_gpus/2] > dsts_lens[gpu+num_gpus/2])
+            if (LL[num_gpus/2][trg] + LR[num_gpus/2][trg] > dsts_lens[trg+num_gpus/2])
                 if (throw_exceptions)
                     throw std::invalid_argument(
                         "dsts_lens not compatible with partition_table.");
                 else return false;
         }
 
+        // check if sufficient space for phase 2
+        for (uint64_t trg = 0; trg < num_gpus/2; trg++) {
+            if (UL[num_gpus/2][trg] + LL[num_gpus/2][trg] > srcs_lens[trg])
+                if (throw_exceptions)
+                    throw std::invalid_argument(
+                        "srcs_lens not compatible with partition_table.");
+                else return false;
+            if (UR[num_gpus/2][trg] + LR[num_gpus/2][trg] > srcs_lens[trg])
+                if (throw_exceptions)
+                    throw std::invalid_argument(
+                        "srcs_lens not compatible with partition_table.");
+                else return false;
+        }
+
+
+        /**********************************************************************
+         * PHASE 1
+         **********************************************************************/
+
+        // upper subgroup
         for (uint64_t src_gpu = 0; src_gpu < num_gpus/2; src_gpu++) {
             const uint64_t src = context->get_device_id(src_gpu);
             cudaSetDevice(src);
-            for (uint64_t trg_gpu = 0; trg_gpu < num_gpus/2; trg_gpu++) {
-
-                uint64_t count = table[src_gpu][trg_gpu]
-                               * sizeof(value_t);
-                value_t * to   = dsts [src_gpu]
-                               + h_L_trg[src_gpu][trg_gpu];
-                value_t * from = srcs [src_gpu]
-                               + h_table[src_gpu][trg_gpu];
-
-                cudaMemcpyAsync(to, from, count, cudaMemcpyDeviceToDevice,
-                                context->get_streams(src_gpu)[trg_gpu]);
-            }
-        } CUERR
-
-        for (uint64_t src_gpu = 0; src_gpu < num_gpus/2; src_gpu++) {
-            const uint64_t src = context->get_device_id(src_gpu+num_gpus/2);
-            cudaSetDevice(src);
-            for (uint64_t trg_gpu = 0; trg_gpu < num_gpus/2; trg_gpu++) {
-
-                uint64_t count = table[src_gpu+num_gpus/2][trg_gpu+num_gpus/2]
-                               * sizeof(value_t);
-                value_t * to   = dsts [src_gpu+num_gpus/2]
-                               + h_R_trg[src_gpu][trg_gpu]
-                               + table[src_gpu][trg_gpu+num_gpus/2];
-                value_t * from = srcs [src_gpu+num_gpus/2]
-                               + h_table[src_gpu+num_gpus/2][trg_gpu+num_gpus/2];
-
-                cudaMemcpyAsync(to, from, count, cudaMemcpyDeviceToDevice,
-                                context->get_streams(src_gpu+num_gpus/2)[trg_gpu]);
-            }
-        } CUERR
-
-        for (uint64_t src_gpu = 0; src_gpu < num_gpus/2; src_gpu++) {
-            const uint64_t src = context->get_device_id(src_gpu+num_gpus/2);
-            cudaSetDevice(src);
+            // left subgroup
             for (uint64_t trg_gpu = 0; trg_gpu < num_gpus/2; trg_gpu++) {
                 const uint64_t trg = context->get_device_id(trg_gpu);            
 
-                uint64_t count = table[src_gpu+num_gpus/2][trg_gpu]
+                uint64_t count = table[src_gpu][trg_gpu]
                                * sizeof(value_t);
-                value_t * to   = dsts [src_gpu]
-                               + h_L_trg[src_gpu][trg_gpu]
-                               + table[src_gpu][trg_gpu];
-                value_t * from = srcs [src_gpu+num_gpus/2]
-                               + h_table[src_gpu+num_gpus/2][trg_gpu];
+                value_t * to   = dsts [trg_gpu]
+                               + UL[src_gpu][trg_gpu];
+                value_t * from = srcs [src_gpu]
+                               + h_table[src_gpu][trg_gpu];
 
                 cudaMemcpyPeerAsync(to, trg, from, src, count,
-                                    context->get_streams(src_gpu+num_gpus/2)[trg_gpu+num_gpus/2]);
-
+                                    context->get_streams(src_gpu)[trg_gpu]);
             }
-        } CUERR
-
-        for (uint64_t src_gpu = 0; src_gpu < num_gpus/2; src_gpu++) {
-            const uint64_t src = context->get_device_id(src_gpu);
-            cudaSetDevice(src);
+            // right subgroup
             for (uint64_t trg_gpu = 0; trg_gpu < num_gpus/2; trg_gpu++) {
-                const uint64_t trg = context->get_device_id(trg_gpu+num_gpus/2);
+                const uint64_t trg = context->get_device_id(trg_gpu);
 
                 uint64_t count = table[src_gpu][trg_gpu+num_gpus/2]
                                * sizeof(value_t);
-                value_t * to   = dsts [src_gpu+num_gpus/2]
-                               + h_R_trg[src_gpu][trg_gpu];
+                value_t * to   = dsts [trg_gpu]
+                               + UL[num_gpus/2][trg_gpu]
+                               + UR[src_gpu][trg_gpu];
                 value_t * from = srcs [src_gpu]
                                + h_table[src_gpu][trg_gpu+num_gpus/2];
 
@@ -231,76 +181,42 @@ public:
             }
         } CUERR
 
+        // lower subgroup
+        for (uint64_t src_gpu = 0; src_gpu < num_gpus/2; src_gpu++) {
+            const uint64_t src = context->get_device_id(src_gpu+num_gpus/2);
+            cudaSetDevice(src);
+            // left subgroup
+            for (uint64_t trg_gpu = 0; trg_gpu < num_gpus/2; trg_gpu++) {
+                const uint64_t trg = context->get_device_id(trg_gpu+num_gpus/2);            
 
-	uint64_t L_trg[num_gpus/2][num_gpus/2];
-        uint64_t R_trg[num_gpus/2][num_gpus/2];
+                uint64_t count = table[src_gpu+num_gpus/2][trg_gpu]
+                               * sizeof(value_t);
+                value_t * to   = dsts [trg_gpu+num_gpus/2]
+                               + LL[src_gpu][trg_gpu];
+                value_t * from = srcs [src_gpu+num_gpus/2]
+                               + h_table[src_gpu+num_gpus/2][trg_gpu];
 
-        for (uint64_t src = 0; src < num_gpus/2; src++) {
-            for (uint64_t trg = 0; trg < num_gpus/2; trg++) {
-                L_trg[src][trg] = h_L_trg[src][trg+1]
-                                - h_L_trg[src][trg];
-                R_trg[src][trg] = h_R_trg[src][trg+1]
-                                - h_R_trg[src][trg];
+                cudaMemcpyPeerAsync(to, trg, from, src, count,
+                                    context->get_streams(src_gpu+num_gpus/2)[trg_gpu]);
+
             }
-	}
+            // right subgroup
+            for (uint64_t trg_gpu = 0; trg_gpu < num_gpus/2; trg_gpu++) {
+                const uint64_t trg = context->get_device_id(trg_gpu+num_gpus/2);
 
-        /*
-        std::cout << "L" << std::endl;
-        for (uint64_t src = 0; src < num_gpus/2; src++)
-            for (uint64_t trg = 0; trg < num_gpus/2; trg++)
-                std::cout << L_trg[src][trg] << (trg+1 == num_gpus/2 ? "\n" : " ");
-        std::cout << std::endl;
+                uint64_t count = table[src_gpu+num_gpus/2][trg_gpu+num_gpus/2]
+                               * sizeof(value_t);
+                value_t * to   = dsts [trg_gpu+num_gpus/2]
+                               + LL[num_gpus/2][trg_gpu]
+                               + LR[src_gpu][trg_gpu];
+                value_t * from = srcs [src_gpu+num_gpus/2]
+                               + h_table[src_gpu+num_gpus/2][trg_gpu+num_gpus/2];
 
-        std::cout << "R" << std::endl;
-        for (uint64_t src = 0; src < num_gpus/2; src++)
-            for (uint64_t trg = 0; trg < num_gpus/2; trg++)
-                std::cout << R_trg[src][trg] << (trg+1 == num_gpus/2 ? "\n" : " ");
-        std::cout << std::endl;
-        */
+                cudaMemcpyPeerAsync(to, trg, from, src, count,
+                                    context->get_streams(src_gpu+num_gpus/2)[trg_gpu+num_gpus/2]);
+            }
+        } CUERR
 
-        uint64_t v_L_trg[num_gpus/2+1][num_gpus/2];
-        uint64_t v_R_trg[num_gpus/2+1][num_gpus/2];
-  
-        for (uint64_t trg = 0; trg < num_gpus/2; trg++) {
-            v_L_trg[0][trg] = 0;
-            v_R_trg[0][trg] = 0;
-        }
-
-        for (uint64_t trg = 0; trg < num_gpus/2; trg++) {
-            for (uint64_t src = 0; src < num_gpus/2; src++) {
-                v_L_trg[src+1][trg] = v_L_trg[src][trg] 
-                                    +   L_trg[src][trg];
-                v_R_trg[src+1][trg] = v_R_trg[src][trg] 
-                                    +   R_trg[src][trg]; 
-             }
-        }
-
-        /*
-        std::cout << "v_L" << std::endl;
-        for (uint64_t src = 0; src < num_gpus/2+1; src++)
-            for (uint64_t trg = 0; trg < num_gpus/2; trg++)
-                std::cout << v_L_trg[src][trg] << (trg+1 == num_gpus/2 ? "\n" : " ");
-        std::cout << std::endl;
-
-        std::cout << "v_R" << std::endl;
-        for (uint64_t src = 0; src < num_gpus/2+1; src++)
-            for (uint64_t trg = 0; trg < num_gpus/2; trg++)
-                std::cout << v_R_trg[src][trg] << (trg+1 == num_gpus/2 ? "\n" : " ");
-        std::cout << std::endl;
-        */
-
-        for (uint64_t trg = 0; trg < num_gpus/2; trg++) {
-            if (v_L_trg[num_gpus/2][trg] > srcs_lens[trg])
-                if (throw_exceptions)
-                    throw std::invalid_argument(
-                        "srcs_lens not compatible with partition_table.");
-                else return false;
-            if (v_R_trg[num_gpus/2][trg] > srcs_lens[trg+num_gpus/2])
-                if (throw_exceptions)
-                    throw std::invalid_argument(
-                        "srcs_lens not compatible with partition_table.");
-                else return false;
-        }
 
         // only for convenience
 	if (false) {
@@ -319,37 +235,75 @@ public:
         // mandatory
         context->sync_all_streams();
 
-        for (uint64_t src_gpu = 0; src_gpu < num_gpus/2; ++src_gpu) {
+
+        /**********************************************************************
+         * PHASE 2
+         **********************************************************************/
+
+        // upper left subgroup
+        for (uint64_t gpu = 0; gpu < num_gpus/2; ++gpu) {
+            const uint64_t src_gpu = gpu;
+            const uint64_t trg_gpu = gpu;
             const uint64_t src = context->get_device_id(src_gpu);
+            const uint64_t trg = context->get_device_id(trg_gpu);
             cudaSetDevice(src);
-            for (uint64_t trg_gpu = 0; trg_gpu < num_gpus/2; ++trg_gpu) {
-                const uint64_t trg = context->get_device_id(trg_gpu);
-                const uint64_t len = L_trg[src_gpu][trg_gpu];
-                value_t * from = dsts[src_gpu] + h_L_trg[src_gpu][trg_gpu];
-                value_t * to   = srcs[trg_gpu] + v_L_trg[src_gpu][trg_gpu];
+            const uint64_t len = UL[num_gpus/2][gpu];
+            value_t * from = dsts[src_gpu];
+            value_t * to   = srcs[trg_gpu];
 
-                cudaMemcpyPeerAsync(to, trg, from, src,
-                                    len*sizeof(value_t),
-                                    context->get_streams(src_gpu)[trg_gpu]);
-
-            } 
+            cudaMemcpyAsync(to, from, len*sizeof(value_t), cudaMemcpyDeviceToDevice,
+                            context->get_streams(src_gpu)[trg_gpu]);
         } CUERR
 
-
-        for (uint64_t src_gpu = 0; src_gpu < num_gpus/2; ++src_gpu) {
-            const uint64_t src = context->get_device_id(src_gpu+num_gpus/2);
+        // lower right subgroup
+        for (uint64_t gpu = 0; gpu < num_gpus/2; ++gpu) {
+            const uint64_t src_gpu = gpu+num_gpus/2;
+            const uint64_t trg_gpu = gpu+num_gpus/2;
+            const uint64_t src = context->get_device_id(src_gpu);
+            const uint64_t trg = context->get_device_id(trg_gpu);
             cudaSetDevice(src);
-            for (uint64_t trg_gpu = 0; trg_gpu < num_gpus/2; ++trg_gpu) {
-                const uint64_t trg = context->get_device_id(trg_gpu+num_gpus/2);
-                const uint64_t len = R_trg[src_gpu][trg_gpu];
-                value_t * from = dsts[src_gpu+num_gpus/2] + h_R_trg[src_gpu][trg_gpu];
-                value_t * to   = srcs[trg_gpu+num_gpus/2] + v_R_trg[src_gpu][trg_gpu];
+            const uint64_t len = LR[num_gpus/2][gpu];
+            value_t * from = dsts[src_gpu]
+                           + LL[num_gpus/2][gpu];
+            value_t * to   = srcs[trg_gpu]
+                           + UR[num_gpus/2][gpu];
 
-                cudaMemcpyPeerAsync(to, trg, from, src,
-                                    len*sizeof(value_t),
-                                    context->get_streams(src_gpu+num_gpus/2)[trg_gpu]);
+            cudaMemcpyAsync(to, from, len*sizeof(value_t), cudaMemcpyDeviceToDevice,
+                            context->get_streams(src_gpu)[trg_gpu]);
+        } CUERR
 
-            } 
+        // upper right subgroup
+        for (uint64_t gpu = 0; gpu < num_gpus/2; ++gpu) {
+            const uint64_t src_gpu = gpu;
+            const uint64_t trg_gpu = gpu+num_gpus/2;
+            const uint64_t src = context->get_device_id(src_gpu);
+            const uint64_t trg = context->get_device_id(trg_gpu);
+            cudaSetDevice(src);
+            const uint64_t len = UR[num_gpus/2][gpu];
+            value_t * from = dsts[src_gpu]
+                           + UL[num_gpus/2][gpu];
+            value_t * to   = srcs[trg_gpu];
+
+            cudaMemcpyPeerAsync(to, trg, from, src,
+                                len*sizeof(value_t),
+                                context->get_streams(src_gpu)[trg_gpu]);
+        } CUERR
+
+        // lower left subgroup
+        for (uint64_t gpu = 0; gpu < num_gpus/2; ++gpu) {
+            const uint64_t src_gpu = gpu+num_gpus/2;
+            const uint64_t trg_gpu = gpu;
+            const uint64_t src = context->get_device_id(src_gpu);
+            const uint64_t trg = context->get_device_id(trg_gpu);
+            cudaSetDevice(src);
+            const uint64_t len = LL[num_gpus/2][gpu];
+            value_t * from = dsts[src_gpu];
+            value_t * to   = srcs[trg_gpu]
+                           + UL[num_gpus/2][gpu];
+
+            cudaMemcpyPeerAsync(to, trg, from, src,
+                                len*sizeof(value_t),
+                                context->get_streams(src_gpu)[trg_gpu]);
         } CUERR 
 
 	return true;
