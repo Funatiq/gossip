@@ -4,7 +4,7 @@
 #include <random>
 #include <cstring>
 #include <stdexcept>
-#include "cuda_helpers.cuh"
+#include "cudahelpers/cuda_helpers.cuh"
 
 namespace gossip {
 

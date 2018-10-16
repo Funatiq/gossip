@@ -1,0 +1,3 @@
+[submodule "include/cudahelpers"]
+	path = include/cudahelpers
+	url = https://github.com/gravitino/cudahelpers.git

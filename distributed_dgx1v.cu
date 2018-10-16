@@ -2,6 +2,16 @@
 #include <cstdint>
 #include "include/gossip.cuh"
 
+template <typename data_t>
+__global__
+void memset_kernel(data_t * data, size_t capacity, const data_t value)
+{
+    for (size_t thid = blockDim.x*blockIdx.x+threadIdx.x; thid < capacity; thid += blockDim.x*gridDim.x)
+    {
+        data[thid] = value;
+    }
+}
+
 template <
     typename value_t,
     typename index_t,
