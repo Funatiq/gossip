@@ -116,35 +116,25 @@ public:
         //inner left to right
         for (uint64_t src = 0; src < 2; src++) {
             uint64_t transfer_size_sum = 0;
-            for(uint64_t trg = num_gpus/2; trg < num_gpus; trg++)
-                transfer_size_sum += table[src][trg];
-            phase_one.emplace_back(src, h_table[src][num_gpus/2], src+num_gpus/2, phase_one_offsets[src+num_gpus/2], transfer_size_sum);
-            
-            transfer_size_sum = 0;
             for(uint64_t trg = num_gpus/2; trg < num_gpus; trg++) {
-                uint64_t transfer_size = table[src][trg];
+                const uint64_t transfer_size = table[src][trg];
                 phase_two.emplace_back(src+num_gpus/2, phase_one_offsets[src+num_gpus/2] + transfer_size_sum, trg, phase_two_offsets[trg], transfer_size);
-                transfer_size_sum += table[src][trg];
                 phase_two_offsets[trg] += transfer_size; 
+                transfer_size_sum += transfer_size;
             }
-
+            phase_one.emplace_back(src, h_table[src][num_gpus/2], src+num_gpus/2, phase_one_offsets[src+num_gpus/2], transfer_size_sum);
             phase_one_offsets[src+num_gpus/2] += transfer_size_sum;
         }
         //inner right to left
         for (uint64_t src = num_gpus/2; src < 2+num_gpus/2; src++) {
             uint64_t transfer_size_sum = 0;
-            for(uint64_t trg = 0; trg < num_gpus/2; trg++)
-                transfer_size_sum += table[src][trg];
-            phase_one.emplace_back(src, h_table[src][0], src-num_gpus/2, phase_one_offsets[src-num_gpus/2], transfer_size_sum);
-            
-            transfer_size_sum = 0;
             for(uint64_t trg = 0; trg < num_gpus/2; trg++) {
-                uint64_t transfer_size = table[src][trg];
+                const uint64_t transfer_size = table[src][trg];
                 phase_two.emplace_back(src-num_gpus/2, phase_one_offsets[src-num_gpus/2] + transfer_size_sum, trg, phase_two_offsets[trg], transfer_size);
-                transfer_size_sum += table[src][trg];
                 phase_two_offsets[trg] += transfer_size; 
+                transfer_size_sum += transfer_size;
             }
-
+            phase_one.emplace_back(src, h_table[src][0], src-num_gpus/2, phase_one_offsets[src-num_gpus/2], transfer_size_sum);
             phase_one_offsets[src-num_gpus/2] += transfer_size_sum;
         }
         //outer left to right
