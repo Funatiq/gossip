@@ -62,10 +62,10 @@ public:
         typename table_t>
     bool execAsync (
         value_t * srcs[num_gpus],        // src[k] resides on device_ids[k]
-        index_t srcs_lens[num_gpus],     // src_len[k] is length of src[k]
+        const index_t (&srcs_lens)[num_gpus],     // src_len[k] is length of src[k]
         value_t * dsts[num_gpus],        // dst[k] resides on device_ids[k]
-        index_t dsts_lens[num_gpus],     // dst_len[0] is length of dst[k]
-        table_t table[num_gpus][num_gpus]) const {  // [src_gpu, partition]
+        const index_t (&dsts_lens)[num_gpus],     // dst_len[0] is length of dst[k]
+        const table_t (&table)[num_gpus][num_gpus]) const {  // [src_gpu, partition]
 
         // syncs with zero stream in order to enforce sequential
         // consistency with traditional synchronous memcpy calls
@@ -91,51 +91,47 @@ public:
         
         //left quad
         for (uint64_t trg = 0; trg < num_gpus/2; trg++) {
-            uint64_t transfer_size_sum = 0;
             for (uint64_t src = 0; src < num_gpus/2; src++) {
+                const uint64_t proxy = trg;
                 const uint64_t transfer_size = table[src][trg];
-                phase_one.emplace_back(src, h_table[src][trg], trg, phase_one_offsets[trg], transfer_size);
-                phase_one_offsets[trg] += transfer_size;
-                transfer_size_sum += transfer_size;
+                phase_one.emplace_back(src, h_table[src][trg], proxy, phase_one_offsets[proxy], transfer_size);
+                phase_two.emplace_back(proxy, phase_one_offsets[proxy], trg, phase_two_offsets[trg], transfer_size);
+                phase_one_offsets[proxy] += transfer_size;
+                phase_two_offsets[trg] += transfer_size;
             }
-            phase_two.emplace_back(trg, 0, trg, 0, transfer_size_sum);
-            phase_two_offsets[trg] += transfer_size_sum;
         }
         //right quad
         for (uint64_t trg = num_gpus/2; trg < num_gpus; trg++) {
-            uint64_t transfer_size_sum = 0;
             for (uint64_t src = num_gpus/2; src < num_gpus; src++) {
+                const uint64_t proxy = trg;
                 const uint64_t transfer_size = table[src][trg];
-                phase_one.emplace_back(src, h_table[src][trg], trg, phase_one_offsets[trg], transfer_size);
-                phase_one_offsets[trg] += transfer_size;
-                transfer_size_sum += transfer_size;
+                phase_one.emplace_back(src, h_table[src][trg], proxy, phase_one_offsets[proxy], transfer_size);
+                phase_two.emplace_back(proxy, phase_one_offsets[proxy], trg, phase_one_offsets[trg], transfer_size);
+                phase_one_offsets[proxy] += transfer_size;
+                phase_two_offsets[trg] += transfer_size;
             }
-            phase_two.emplace_back(trg, 0, trg, 0, transfer_size_sum);
-            phase_two_offsets[trg] += transfer_size_sum; 
         }
         //inner left to right
         for (uint64_t src = 0; src < 2; src++) {
-            uint64_t transfer_size_sum = 0;
             for(uint64_t trg = num_gpus/2; trg < num_gpus; trg++) {
+                const uint64_t proxy = src+num_gpus/2;
                 const uint64_t transfer_size = table[src][trg];
-                phase_two.emplace_back(src+num_gpus/2, phase_one_offsets[src+num_gpus/2] + transfer_size_sum, trg, phase_two_offsets[trg], transfer_size);
-                phase_two_offsets[trg] += transfer_size; 
-                transfer_size_sum += transfer_size;
+                phase_one.emplace_back(src, h_table[src][trg], proxy, phase_one_offsets[proxy], transfer_size);
+                phase_two.emplace_back(proxy, phase_one_offsets[proxy], trg, phase_two_offsets[trg], transfer_size);
+                phase_one_offsets[proxy] += transfer_size;
+                phase_two_offsets[trg] += transfer_size;
             }
-            phase_one.emplace_back(src, h_table[src][num_gpus/2], src+num_gpus/2, phase_one_offsets[src+num_gpus/2], transfer_size_sum);
-            phase_one_offsets[src+num_gpus/2] += transfer_size_sum;
         }
         //inner right to left
         for (uint64_t src = num_gpus/2; src < 2+num_gpus/2; src++) {
-            uint64_t transfer_size_sum = 0;
             for(uint64_t trg = 0; trg < num_gpus/2; trg++) {
+                const uint64_t proxy = src-num_gpus/2;
                 const uint64_t transfer_size = table[src][trg];
-                phase_two.emplace_back(src-num_gpus/2, phase_one_offsets[src-num_gpus/2] + transfer_size_sum, trg, phase_two_offsets[trg], transfer_size);
-                phase_two_offsets[trg] += transfer_size; 
-                transfer_size_sum += transfer_size;
+                phase_one.emplace_back(src, h_table[src][trg], proxy, phase_one_offsets[proxy], transfer_size);
+                phase_two.emplace_back(proxy, phase_one_offsets[proxy], trg, phase_two_offsets[trg], transfer_size);
+                phase_one_offsets[proxy] += transfer_size;
+                phase_two_offsets[trg] += transfer_size;
             }
-            phase_one.emplace_back(src, h_table[src][0], src-num_gpus/2, phase_one_offsets[src-num_gpus/2], transfer_size_sum);
-            phase_one_offsets[src-num_gpus/2] += transfer_size_sum;
         }
         //outer left to right
         uint64_t src, proxy, trg, transfer_size;
