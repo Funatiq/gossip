@@ -156,12 +156,12 @@ public:
 
         transfers.one_to_all(0, {0,1,2,3,4,4,4,4});
         transfers.one_to_all(1, {0,1,2,3,5,5,5,5});
-        transfers.one_to_all(2, {0,1,2,3,6,1,6,3});
-        transfers.one_to_all(3, {0,1,2,3,0,7,2,7});
+        transfers.one_to_all(2, {0,2,2,3,6,1,6,3});
+        transfers.one_to_all(3, {3,1,2,3,0,7,2,7});
         transfers.one_to_all(4, {0,0,0,0,4,5,6,7});
         transfers.one_to_all(5, {1,1,1,1,4,5,6,7});
-        transfers.one_to_all(6, {2,5,2,7,4,5,6,7});
-        transfers.one_to_all(7, {4,3,6,3,4,5,6,7});
+        transfers.one_to_all(6, {2,5,2,7,4,6,6,7});
+        transfers.one_to_all(7, {4,3,6,3,7,5,6,7});
 
         // check if sufficient space for phase 1
         for (uint64_t trg = 0; trg < num_gpus; trg++) {
