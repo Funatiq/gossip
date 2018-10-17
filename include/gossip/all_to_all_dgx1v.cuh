@@ -9,29 +9,8 @@ class all2all_dgx1v_t {
     bool external_context;
 
     static_assert(num_gpus==8, "currently only for exactly all GPUs.");
-    
-    struct transfer {
-        const uint64_t src_gpu;
-        const uint64_t src_pos;
-        const uint64_t trg_gpu;
-        const uint64_t trg_pos;
-        const uint64_t len;
-
-        transfer(const uint64_t src_gpu,
-                 const uint64_t src_pos,
-                 const uint64_t trg_gpu,
-                 const uint64_t trg_pos,
-                 const uint64_t len) :
-            src_gpu(src_gpu),
-            src_pos(src_pos),
-            trg_gpu(trg_gpu),
-            trg_pos(trg_pos),
-            len(len)
-        {}
-    };
 
 public:
-
     all2all_dgx1v_t (
         uint64_t * device_ids_=0) : external_context (false){
 
@@ -56,239 +35,78 @@ public:
             delete context;
     }
 
-    template <
-        typename value_t,
-        typename index_t,
-        typename table_t>
-    bool execAsync (
-        value_t * srcs[num_gpus],        // src[k] resides on device_ids[k]
-        index_t srcs_lens[num_gpus],     // src_len[k] is length of src[k]
-        value_t * dsts[num_gpus],        // dst[k] resides on device_ids[k]
-        index_t dsts_lens[num_gpus],     // dst_len[0] is length of dst[k]
-        table_t table[num_gpus][num_gpus]) const {  // [src_gpu, partition]
+private:
+    struct transfer {
+        const uint64_t src_gpu;
+        const uint64_t src_pos;
+        const uint64_t trg_gpu;
+        const uint64_t trg_pos;
+        const uint64_t len;
 
-        // syncs with zero stream in order to enforce sequential
-        // consistency with traditional synchronous memcpy calls
-        if (!external_context)
-            context->sync_hard();
+        transfer(const uint64_t src_gpu,
+                 const uint64_t src_pos,
+                 const uint64_t trg_gpu,
+                 const uint64_t trg_pos,
+                 const uint64_t len) :
+            src_gpu(src_gpu),
+            src_pos(src_pos),
+            trg_gpu(trg_gpu),
+            trg_pos(trg_pos),
+            len(len)
+        {}
+    };
 
-        // compute prefix sums over the partition table
-        uint64_t h_table[num_gpus][num_gpus+1] = {0}; // horizontal scan
-        uint64_t v_table[num_gpus+1][num_gpus] = {0}; // vertical scan
-
-        for (uint64_t gpu = 0; gpu < num_gpus; ++gpu) {
-            for (uint64_t part = 0; part < num_gpus; ++part) {
-                h_table[gpu][part+1] = table[gpu][part]+h_table[gpu][part];
-                v_table[gpu+1][part] = table[gpu][part]+v_table[gpu][part];
-            }
-        }
-        
-        std::vector<transfer> phase_one;
-        std::vector<transfer> phase_two;
+    template<typename table_t>
+    struct transfer_handler {
+        std::vector<transfer> phase_one = {};
+        std::vector<transfer> phase_two = {};
 
         uint64_t phase_one_offsets[num_gpus] = {0};
         uint64_t phase_two_offsets[num_gpus] = {0};
-        
-        //left quad
-        for (uint64_t trg = 0; trg < num_gpus/2; trg++) {
-            uint64_t transfer_size_sum = 0;
-            for (uint64_t src = 0; src < num_gpus/2; src++) {
-                const uint64_t transfer_size = table[src][trg];
-                phase_one.emplace_back(src, h_table[src][trg], trg, phase_one_offsets[trg], transfer_size);
-                phase_one_offsets[trg] += transfer_size;
-                transfer_size_sum += transfer_size;
+
+        const table_t (&table)[num_gpus][num_gpus];
+        uint64_t h_table[num_gpus][num_gpus+1] = {{0}}; // horizontal scan
+
+        transfer_handler(const table_t (&table)[num_gpus][num_gpus]) : table(table) {
+            for (uint64_t gpu = 0; gpu < num_gpus; ++gpu) {
+                for (uint64_t part = 0; part < num_gpus; ++part) {
+                    h_table[gpu][part+1] = table[gpu][part]+h_table[gpu][part];
+                }
             }
-            phase_two.emplace_back(trg, 0, trg, 0, transfer_size_sum);
-            phase_two_offsets[trg] += transfer_size_sum;
         }
-        //right quad
-        for (uint64_t trg = num_gpus/2; trg < num_gpus; trg++) {
-            uint64_t transfer_size_sum = 0;
-            for (uint64_t src = num_gpus/2; src < num_gpus; src++) {
-                const uint64_t transfer_size = table[src][trg];
-                phase_one.emplace_back(src, h_table[src][trg], trg, phase_one_offsets[trg], transfer_size);
-                phase_one_offsets[trg] += transfer_size;
-                transfer_size_sum += transfer_size;
+
+        void push_back(const uint64_t src, const uint64_t proxy, const uint64_t trg) {
+            const uint64_t transfer_size = table[src][trg];
+            phase_one.emplace_back(src, h_table[src][trg], proxy, phase_one_offsets[proxy], transfer_size);
+            phase_two.emplace_back(proxy, phase_one_offsets[proxy], trg, phase_two_offsets[trg], transfer_size);
+            phase_one_offsets[proxy] += transfer_size;
+            phase_two_offsets[trg] += transfer_size;
+        }
+
+        void one_to_all(const uint64_t src, const std::array<uint64_t, num_gpus>& proxies) {
+            for (uint64_t trg = 0; trg < num_gpus; ++trg) {
+                push_back(src, proxies[trg], trg);
             }
-            phase_two.emplace_back(trg, 0, trg, 0, transfer_size_sum);
-            phase_two_offsets[trg] += transfer_size_sum; 
-        }
-        //inner left to right
-        for (uint64_t src = 0; src < 2; src++) {
-            uint64_t transfer_size_sum = 0;
-            for(uint64_t trg = num_gpus/2; trg < num_gpus; trg++) {
-                const uint64_t transfer_size = table[src][trg];
-                phase_two.emplace_back(src+num_gpus/2, phase_one_offsets[src+num_gpus/2] + transfer_size_sum, trg, phase_two_offsets[trg], transfer_size);
-                phase_two_offsets[trg] += transfer_size; 
-                transfer_size_sum += transfer_size;
-            }
-            phase_one.emplace_back(src, h_table[src][num_gpus/2], src+num_gpus/2, phase_one_offsets[src+num_gpus/2], transfer_size_sum);
-            phase_one_offsets[src+num_gpus/2] += transfer_size_sum;
-        }
-        //inner right to left
-        for (uint64_t src = num_gpus/2; src < 2+num_gpus/2; src++) {
-            uint64_t transfer_size_sum = 0;
-            for(uint64_t trg = 0; trg < num_gpus/2; trg++) {
-                const uint64_t transfer_size = table[src][trg];
-                phase_two.emplace_back(src-num_gpus/2, phase_one_offsets[src-num_gpus/2] + transfer_size_sum, trg, phase_two_offsets[trg], transfer_size);
-                phase_two_offsets[trg] += transfer_size; 
-                transfer_size_sum += transfer_size;
-            }
-            phase_one.emplace_back(src, h_table[src][0], src-num_gpus/2, phase_one_offsets[src-num_gpus/2], transfer_size_sum);
-            phase_one_offsets[src-num_gpus/2] += transfer_size_sum;
-        }
-        //outer left to right
-        uint64_t src, proxy, trg, transfer_size;
-        {
-            src = 2; proxy = 6; trg = 4;
-            transfer_size = table[src][trg];
-            phase_one.emplace_back(src,h_table[src][trg],proxy,phase_one_offsets[proxy],transfer_size);
-            phase_two.emplace_back(proxy,phase_one_offsets[proxy],trg,phase_two_offsets[trg],transfer_size);
-            phase_one_offsets[proxy] += transfer_size;
-            phase_two_offsets[trg] += transfer_size;
-
-            src = 2; proxy = 1; trg = 5;
-            transfer_size = table[src][trg];
-            phase_one.emplace_back(src,h_table[src][trg],proxy,phase_one_offsets[proxy],transfer_size);
-            phase_two.emplace_back(proxy,phase_one_offsets[proxy],trg,phase_two_offsets[trg],transfer_size);
-            phase_one_offsets[proxy] += transfer_size;
-            phase_two_offsets[trg] += transfer_size;
-
-            src = 2; proxy = 6; trg = 6;
-            transfer_size = table[src][trg];
-            phase_one.emplace_back(src,h_table[src][trg],proxy,phase_one_offsets[proxy],transfer_size);
-            phase_two.emplace_back(proxy,phase_one_offsets[proxy],trg,phase_two_offsets[trg],transfer_size);
-            phase_one_offsets[proxy] += transfer_size;
-            phase_two_offsets[trg] += transfer_size;
-
-            src = 2; proxy = 3; trg = 7;
-            transfer_size = table[src][trg];
-            phase_one.emplace_back(src,h_table[src][trg],proxy,phase_one_offsets[proxy],transfer_size);
-            phase_two.emplace_back(proxy,phase_one_offsets[proxy],trg,phase_two_offsets[trg],transfer_size);
-            phase_one_offsets[proxy] += transfer_size;
-            phase_two_offsets[trg] += transfer_size;
-        }
-        {
-            src = 3; proxy = 0; trg = 4;
-            transfer_size = table[src][trg];
-            phase_one.emplace_back(src,h_table[src][trg],proxy,phase_one_offsets[proxy],transfer_size);
-            phase_two.emplace_back(proxy,phase_one_offsets[proxy],trg,phase_two_offsets[trg],transfer_size);
-            phase_one_offsets[proxy] += transfer_size;
-            phase_two_offsets[trg] += transfer_size;
-
-            src = 3; proxy = 7; trg = 5;
-            transfer_size = table[src][trg];
-            phase_one.emplace_back(src,h_table[src][trg],proxy,phase_one_offsets[proxy],transfer_size);
-            phase_two.emplace_back(proxy,phase_one_offsets[proxy],trg,phase_two_offsets[trg],transfer_size);
-            phase_one_offsets[proxy] += transfer_size;
-            phase_two_offsets[trg] += transfer_size;
-
-            src = 3; proxy = 2; trg = 6;
-            transfer_size = table[src][trg];
-            phase_one.emplace_back(src,h_table[src][trg],proxy,phase_one_offsets[proxy],transfer_size);
-            phase_two.emplace_back(proxy,phase_one_offsets[proxy],trg,phase_two_offsets[trg],transfer_size);
-            phase_one_offsets[proxy] += transfer_size;
-            phase_two_offsets[trg] += transfer_size;
-
-            src = 3; proxy = 7; trg = 7;
-            transfer_size = table[src][trg];
-            phase_one.emplace_back(src,h_table[src][trg],proxy,phase_one_offsets[proxy],transfer_size);
-            phase_two.emplace_back(proxy,phase_one_offsets[proxy],trg,phase_two_offsets[trg],transfer_size);
-            phase_one_offsets[proxy] += transfer_size;
-            phase_two_offsets[trg] += transfer_size;
-        }
-        //outer right to left
-        {
-            src = 6; proxy = 2; trg = 0;
-            transfer_size = table[src][trg];
-            phase_one.emplace_back(src,h_table[src][trg],proxy,phase_one_offsets[proxy],transfer_size);
-            phase_two.emplace_back(proxy,phase_one_offsets[proxy],trg,phase_two_offsets[trg],transfer_size);
-            phase_one_offsets[proxy] += transfer_size;
-            phase_two_offsets[trg] += transfer_size;
-
-            src = 6; proxy = 5; trg = 1;
-            transfer_size = table[src][trg];
-            phase_one.emplace_back(src,h_table[src][trg],proxy,phase_one_offsets[proxy],transfer_size);
-            phase_two.emplace_back(proxy,phase_one_offsets[proxy],trg,phase_two_offsets[trg],transfer_size);
-            phase_one_offsets[proxy] += transfer_size;
-            phase_two_offsets[trg] += transfer_size;
-
-            src = 6; proxy = 2; trg = 2;
-            transfer_size = table[src][trg];
-            phase_one.emplace_back(src,h_table[src][trg],proxy,phase_one_offsets[proxy],transfer_size);
-            phase_two.emplace_back(proxy,phase_one_offsets[proxy],trg,phase_two_offsets[trg],transfer_size);
-            phase_one_offsets[proxy] += transfer_size;
-            phase_two_offsets[trg] += transfer_size;
-
-            src = 6; proxy = 7; trg = 3;
-            transfer_size = table[src][trg];
-            phase_one.emplace_back(src,h_table[src][trg],proxy,phase_one_offsets[proxy],transfer_size);
-            phase_two.emplace_back(proxy,phase_one_offsets[proxy],trg,phase_two_offsets[trg],transfer_size);
-            phase_one_offsets[proxy] += transfer_size;
-            phase_two_offsets[trg] += transfer_size;
-        }
-        {
-            src = 7; proxy = 4; trg = 0;
-            transfer_size = table[src][trg];
-            phase_one.emplace_back(src,h_table[src][trg],proxy,phase_one_offsets[proxy],transfer_size);
-            phase_two.emplace_back(proxy,phase_one_offsets[proxy],trg,phase_two_offsets[trg],transfer_size);
-            phase_one_offsets[proxy] += transfer_size;
-            phase_two_offsets[trg] += transfer_size;
-
-            src = 7; proxy = 3; trg = 1;
-            transfer_size = table[src][trg];
-            phase_one.emplace_back(src,h_table[src][trg],proxy,phase_one_offsets[proxy],transfer_size);
-            phase_two.emplace_back(proxy,phase_one_offsets[proxy],trg,phase_two_offsets[trg],transfer_size);
-            phase_one_offsets[proxy] += transfer_size;
-            phase_two_offsets[trg] += transfer_size;
-
-            src = 7; proxy = 6; trg = 2;
-            transfer_size = table[src][trg];
-            phase_one.emplace_back(src,h_table[src][trg],proxy,phase_one_offsets[proxy],transfer_size);
-            phase_two.emplace_back(proxy,phase_one_offsets[proxy],trg,phase_two_offsets[trg],transfer_size);
-            phase_one_offsets[proxy] += transfer_size;
-            phase_two_offsets[trg] += transfer_size;
-
-            src = 7; proxy = 3; trg = 3;
-            transfer_size = table[src][trg];
-            phase_one.emplace_back(src,h_table[src][trg],proxy,phase_one_offsets[proxy],transfer_size);
-            phase_two.emplace_back(proxy,phase_one_offsets[proxy],trg,phase_two_offsets[trg],transfer_size);
-            phase_one_offsets[proxy] += transfer_size;
-            phase_two_offsets[trg] += transfer_size;
-        }
-        
-        // check if sufficient space for phase 1
-        for (uint64_t trg = 0; trg < num_gpus; trg++) {
-            if (phase_one_offsets[trg] > dsts_lens[trg])
-            if (throw_exceptions)
-            throw std::invalid_argument(
-                "dsts_lens not compatible with partition_table.");
-                else return false;
-        }
- 
-        // check if sufficient space for phase 2
-        for (uint64_t trg = 0; trg < num_gpus; trg++) {
-            if (phase_two_offsets[trg] > srcs_lens[trg])
-                if (throw_exceptions)
-                    throw std::invalid_argument(
-                        "srcs_lens not compatible with partition_table.");
-                else return false;
         }
 
+    };
 
-        /**********************************************************************
-         * PHASE 1
-         **********************************************************************/
+    void show_phase(const std::vector<transfer>& transfers) const {
+        for(const transfer& t : transfers) {
+            std::cout <<   "src:" << t.src_gpu
+                      << ", pos:" << t.src_pos
+                      << ", trg:" << t.trg_gpu
+                      << ", pos:" << t.trg_pos
+                      << ", len:" << t.len
+                      << std::endl;
+        }
+    }
 
-        // for(const transfer& t : phase_one) {
-        //     std::cout << "src:" << t.src_gpu
-        //               << ", pos:" << t.src_pos
-        //               << ", trg:" << t.trg_gpu
-        //               << ", pos:" << t.trg_pos
-        //               << ", len:" << t.len << std::endl;
-        // }
-
-        for(const transfer& t : phase_one) {
+    template<typename value_t>
+    void execute_phase(value_t * srcs[num_gpus],
+                       value_t * dsts[num_gpus],
+                       const std::vector<transfer>& transfers) const {
+        for(const transfer& t : transfers) {
             const uint64_t src = context->get_device_id(t.src_gpu);
             const uint64_t trg = context->get_device_id(t.trg_gpu);
             const auto stream  = context->get_streams(t.src_gpu)[t.trg_gpu];
@@ -299,50 +117,90 @@ public:
 
             cudaMemcpyPeerAsync(to, trg, from, src, size, stream);
         } CUERR
+    }
 
-        // only for convenience
-        if (false) {
-            context->sync_all_streams();
-            for (uint64_t src_gpu = 0; src_gpu < num_gpus; src_gpu++) {
-                const uint64_t src = context->get_device_id(src_gpu);
-                const auto stream  = context->get_streams(src_gpu)[0];
-                cudaSetDevice(src);
-                const uint64_t count = srcs_lens[src_gpu]
-                                     * sizeof(value_t);
-                cudaMemsetAsync(srcs[src_gpu], 0, count, stream);
-            } CUERR
+    // only for convenience
+    template <
+        typename value_t,
+        typename index_t>
+    void clear(value_t * mem[num_gpus], index_t mem_lens[num_gpus]) {
+        context->sync_all_streams();
+        for (uint64_t gpu = 0; gpu < num_gpus; gpu++) {
+            const uint64_t id = context->get_device_id(gpu);
+            const auto stream = context->get_streams(gpu)[0];
+            cudaSetDevice(id);
+            const uint64_t size = mem_lens[gpu]
+                                * sizeof(value_t);
+            cudaMemsetAsync(mem[gpu], 0, size, stream);
+        } CUERR
+    }
+
+public:
+    template <
+        typename value_t,
+        typename index_t,
+        typename table_t>
+    bool execAsync (
+        value_t * srcs[num_gpus],        // src[k] resides on device_ids[k]
+        const index_t (&srcs_lens)[num_gpus],     // src_len[k] is length of src[k]
+        value_t * dsts[num_gpus],        // dst[k] resides on device_ids[k]
+        const index_t (&dsts_lens)[num_gpus],     // dst_len[0] is length of dst[k]
+        const table_t (&table)[num_gpus][num_gpus]) const {  // [src_gpu, partition]
+
+        // syncs with zero stream in order to enforce sequential
+        // consistency with traditional synchronous memcpy calls
+        if (!external_context)
+            context->sync_hard();
+
+        transfer_handler<table_t> transfers(table);
+
+        transfers.one_to_all(0, {0,1,2,3,4,4,4,4});
+        transfers.one_to_all(1, {0,1,2,3,5,5,5,5});
+        transfers.one_to_all(2, {0,2,2,3,6,1,6,3});
+        transfers.one_to_all(3, {3,1,2,3,0,7,2,7});
+        transfers.one_to_all(4, {0,0,0,0,4,5,6,7});
+        transfers.one_to_all(5, {1,1,1,1,4,5,6,7});
+        transfers.one_to_all(6, {2,5,2,7,4,6,6,7});
+        transfers.one_to_all(7, {4,3,6,3,7,5,6,7});
+
+        // check if sufficient space for phase 1
+        for (uint64_t trg = 0; trg < num_gpus; trg++) {
+            if (transfers.phase_one_offsets[trg] > dsts_lens[trg])
+                if (throw_exceptions)
+                    throw std::invalid_argument(
+                        "dsts_lens not compatible with partition_table.");
+                else return false;
         }
 
+        // check if sufficient space for phase 2
+        for (uint64_t trg = 0; trg < num_gpus; trg++) {
+            if (transfers.phase_two_offsets[trg] > srcs_lens[trg])
+                if (throw_exceptions)
+                    throw std::invalid_argument(
+                        "srcs_lens not compatible with partition_table.");
+                else return false;
+        }
+
+
+        /**********************************************************************
+         * PHASE 1
+         **********************************************************************/
+        // show_phase(transfers.phase_one);
+        execute_phase(srcs, dsts, transfers.phase_one);
+
+        // only for convenience
+        // clear(srcs, srcs_lens);
 
         // mandatory
         context->sync_all_streams();
 
-
         /**********************************************************************
          * PHASE 2
          **********************************************************************/
+        // show_phase(transfers.phase_two);
+        execute_phase(dsts, srcs, transfers.phase_two);
 
-        // for(const transfer& t : phase_two) {
-        //     std::cout << "src:" << t.src_gpu
-        //               << ", pos:" << t.src_pos
-        //               << ", trg:" << t.trg_gpu
-        //               << ", pos:" << t.trg_pos
-        //               << ", len:" << t.len << std::endl;
-        // }
-
-         for(const transfer& t : phase_two) {
-            const uint64_t src = context->get_device_id(t.src_gpu);
-            const uint64_t trg = context->get_device_id(t.trg_gpu);
-            const auto stream  = context->get_streams(t.src_gpu)[t.trg_gpu];
-            cudaSetDevice(src);
-            const uint64_t size = t.len * sizeof(value_t);
-            value_t * from = dsts[t.src_gpu] + t.src_pos;
-            value_t * to   = srcs[t.trg_gpu] + t.trg_pos;
-
-            cudaMemcpyPeerAsync(to, trg, from, src, size, stream);
-        } CUERR
-
-    return true;
+        return true;
     }
 
     void print_connectivity_matrix () const noexcept {
