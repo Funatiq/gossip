@@ -1,8 +1,8 @@
 #pragma once
 
 template<
-    uint64_t num_gpus,
-    uint64_t throw_exceptions=true>
+    gpu_id_t num_gpus,
+    bool throw_exceptions=true>
 class all2all_dgx1v_t {
 
     context_t<num_gpus> * context;
@@ -12,7 +12,7 @@ class all2all_dgx1v_t {
 
 public:
     all2all_dgx1v_t (
-        uint64_t * device_ids_=0) : external_context (false){
+        gpu_id_t * device_ids_=0) : external_context (false){
 
         if (device_ids_)
             context = new context_t<num_gpus>(device_ids_);
@@ -37,17 +37,17 @@ public:
 
 private:
     struct transfer {
-        const uint64_t src_gpu;
-        const uint64_t src_pos;
-        const uint64_t trg_gpu;
-        const uint64_t trg_pos;
-        const uint64_t len;
+        const gpu_id_t src_gpu;
+        const size_t src_pos;
+        const gpu_id_t trg_gpu;
+        const size_t trg_pos;
+        const size_t len;
 
-        transfer(const uint64_t src_gpu,
-                 const uint64_t src_pos,
-                 const uint64_t trg_gpu,
-                 const uint64_t trg_pos,
-                 const uint64_t len) :
+        transfer(const gpu_id_t src_gpu,
+                 const size_t src_pos,
+                 const gpu_id_t trg_gpu,
+                 const size_t trg_pos,
+                 const size_t len) :
             src_gpu(src_gpu),
             src_pos(src_pos),
             trg_gpu(trg_gpu),
@@ -61,30 +61,30 @@ private:
         std::vector<transfer> phase_one = {};
         std::vector<transfer> phase_two = {};
 
-        uint64_t phase_one_offsets[num_gpus] = {0};
-        uint64_t phase_two_offsets[num_gpus] = {0};
+        size_t phase_one_offsets[num_gpus] = {0};
+        size_t phase_two_offsets[num_gpus] = {0};
 
         const table_t (&table)[num_gpus][num_gpus];
-        uint64_t h_table[num_gpus][num_gpus+1] = {{0}}; // horizontal scan
+        size_t h_table[num_gpus][num_gpus+1] = {{0}}; // horizontal scan
 
         transfer_handler(const table_t (&table)[num_gpus][num_gpus]) : table(table) {
-            for (uint64_t gpu = 0; gpu < num_gpus; ++gpu) {
-                for (uint64_t part = 0; part < num_gpus; ++part) {
+            for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
+                for (gpu_id_t part = 0; part < num_gpus; ++part) {
                     h_table[gpu][part+1] = table[gpu][part]+h_table[gpu][part];
                 }
             }
         }
 
-        void push_back(const uint64_t src, const uint64_t proxy, const uint64_t trg) {
-            const uint64_t transfer_size = table[src][trg];
+        void push_back(const gpu_id_t src, const gpu_id_t proxy, const gpu_id_t trg) {
+            const size_t transfer_size = table[src][trg];
             phase_one.emplace_back(src, h_table[src][trg], proxy, phase_one_offsets[proxy], transfer_size);
             phase_two.emplace_back(proxy, phase_one_offsets[proxy], trg, phase_two_offsets[trg], transfer_size);
             phase_one_offsets[proxy] += transfer_size;
             phase_two_offsets[trg] += transfer_size;
         }
 
-        void one_to_all(const uint64_t src, const std::array<uint64_t, num_gpus>& proxies) {
-            for (uint64_t trg = 0; trg < num_gpus; ++trg) {
+        void one_to_all(const gpu_id_t src, const std::array<gpu_id_t, num_gpus>& proxies) {
+            for (gpu_id_t trg = 0; trg < num_gpus; ++trg) {
                 push_back(src, proxies[trg], trg);
             }
         }
@@ -107,11 +107,11 @@ private:
                        value_t * dsts[num_gpus],
                        const std::vector<transfer>& transfers) const {
         for(const transfer& t : transfers) {
-            const uint64_t src = context->get_device_id(t.src_gpu);
-            const uint64_t trg = context->get_device_id(t.trg_gpu);
+            const gpu_id_t src = context->get_device_id(t.src_gpu);
+            const gpu_id_t trg = context->get_device_id(t.trg_gpu);
             const auto stream  = context->get_streams(t.src_gpu)[t.trg_gpu];
             cudaSetDevice(src);
-            const uint64_t size = t.len * sizeof(value_t);
+            const size_t size = t.len * sizeof(value_t);
             value_t * from = srcs[t.src_gpu] + t.src_pos;
             value_t * to   = dsts[t.trg_gpu] + t.trg_pos;
 
@@ -125,12 +125,12 @@ private:
         typename index_t>
     void clear(value_t * mem[num_gpus], index_t mem_lens[num_gpus]) {
         context->sync_all_streams();
-        for (uint64_t gpu = 0; gpu < num_gpus; gpu++) {
-            const uint64_t id = context->get_device_id(gpu);
+        for (gpu_id_t gpu = 0; gpu < num_gpus; gpu++) {
+            const gpu_id_t id = context->get_device_id(gpu);
             const auto stream = context->get_streams(gpu)[0];
             cudaSetDevice(id);
-            const uint64_t size = mem_lens[gpu]
-                                * sizeof(value_t);
+            const size_t size = mem_lens[gpu]
+                              * sizeof(value_t);
             cudaMemsetAsync(mem[gpu], 0, size, stream);
         } CUERR
     }
@@ -164,7 +164,7 @@ public:
         transfers.one_to_all(7, {4,3,6,3,7,5,6,7});
 
         // check if sufficient space for phase 1
-        for (uint64_t trg = 0; trg < num_gpus; trg++) {
+        for (gpu_id_t trg = 0; trg < num_gpus; trg++) {
             if (transfers.phase_one_offsets[trg] > dsts_lens[trg])
                 if (throw_exceptions)
                     throw std::invalid_argument(
@@ -173,7 +173,7 @@ public:
         }
 
         // check if sufficient space for phase 2
-        for (uint64_t trg = 0; trg < num_gpus; trg++) {
+        for (gpu_id_t trg = 0; trg < num_gpus; trg++) {
             if (transfers.phase_two_offsets[trg] > srcs_lens[trg])
                 if (throw_exceptions)
                     throw std::invalid_argument(

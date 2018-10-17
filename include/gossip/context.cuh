@@ -1,45 +1,45 @@
 #pragma once
 
 template <
-    uint64_t num_gpus,
-    uint64_t throw_exceptions=true,
+    gpu_id_t num_gpus,
+    bool throw_exceptions=true,
     uint64_t PEER_STATUS_SLOW=0,
     uint64_t PEER_STATUS_DIAG=1,
     uint64_t PEER_STATUS_FAST=2>
 class context_t {
 
     cudaStream_t * streams;
-    uint64_t * device_ids;
+    gpu_id_t * device_ids;
     uint64_t peer_status[num_gpus][num_gpus];
 
 public:
 
-    context_t (uint64_t * device_ids_=0) {
+    context_t (gpu_id_t * device_ids_=0) {
 
         // copy num_gpus many device identifiers
-        device_ids = new uint64_t[num_gpus];
-        for (uint64_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu)
+        device_ids = new gpu_id_t[num_gpus];
+        for (gpu_id_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu)
             device_ids[src_gpu] = device_ids_ ?
                                   device_ids_[src_gpu] : src_gpu;
 
         // create num_gpus^2 streams where streams[gpu*num_gpus+part]
         // denotes the stream to be used for GPU gpu and partition part
         streams = new cudaStream_t[num_gpus*num_gpus];
-        for (uint64_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
+        for (gpu_id_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
             cudaSetDevice(get_device_id(src_gpu));
             cudaDeviceSynchronize();
-            for (uint64_t part = 0; part < num_gpus; ++part) {
+            for (gpu_id_t part = 0; part < num_gpus; ++part) {
                 cudaStreamCreate(get_streams(src_gpu)+part);
             }
         } CUERR
 
 
         // compute the connectivity matrix
-        for (uint64_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
-            const uint64_t src = get_device_id(src_gpu);
+        for (gpu_id_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
+            const gpu_id_t src = get_device_id(src_gpu);
             cudaSetDevice(src);
-            for (uint64_t dst_gpu = 0; dst_gpu < num_gpus; ++dst_gpu) {
-                const uint64_t dst = get_device_id(dst_gpu);
+            for (gpu_id_t dst_gpu = 0; dst_gpu < num_gpus; ++dst_gpu) {
+                const gpu_id_t dst = get_device_id(dst_gpu);
 
                 // check if src can access dst
                 if (src == dst) {
@@ -54,11 +54,11 @@ public:
             }
         } CUERR
 
-        for (uint64_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
-            const uint64_t src = get_device_id(src_gpu);
+        for (gpu_id_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
+            const gpu_id_t src = get_device_id(src_gpu);
             cudaSetDevice(src);
-            for (uint64_t dst_gpu = 0; dst_gpu < num_gpus; ++dst_gpu) {
-                const uint64_t dst = get_device_id(dst_gpu);
+            for (gpu_id_t dst_gpu = 0; dst_gpu < num_gpus; ++dst_gpu) {
+                const gpu_id_t dst = get_device_id(dst_gpu);
 
                 if (src_gpu != dst_gpu) {
                     if (throw_exceptions)
@@ -92,21 +92,21 @@ public:
     ~context_t () {
 
         // synchronize and destroy streams
-        for (uint64_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
+        for (gpu_id_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
             cudaSetDevice(get_device_id(src_gpu));
             cudaDeviceSynchronize();
-            for (uint64_t part = 0; part < num_gpus; ++part) {
+            for (gpu_id_t part = 0; part < num_gpus; ++part) {
                 cudaStreamSynchronize(get_streams(src_gpu)[part]);
                 cudaStreamDestroy(get_streams(src_gpu)[part]);
             }
         } CUERR
 
         // disable peer access
-        for (uint64_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
-            const uint64_t src = get_device_id(src_gpu);
+        for (gpu_id_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
+            const gpu_id_t src = get_device_id(src_gpu);
             cudaSetDevice(src);
-            for (uint64_t dst_gpu = 0; dst_gpu < num_gpus; ++dst_gpu) {
-                const uint64_t dst = get_device_id(dst_gpu);
+            for (gpu_id_t dst_gpu = 0; dst_gpu < num_gpus; ++dst_gpu) {
+                const gpu_id_t dst = get_device_id(dst_gpu);
 
                 if (peer_status[src_gpu][dst_gpu] == PEER_STATUS_FAST) {
                     cudaDeviceDisablePeerAccess(dst);
@@ -133,23 +133,23 @@ public:
         delete [] device_ids;
     }
 
-    uint64_t get_device_id (const uint64_t gpu) const noexcept {
+    gpu_id_t get_device_id (const gpu_id_t gpu) const noexcept {
 
         // return the actual device identifier of GPU gpu
         return device_ids[gpu];
     }
 
-    cudaStream_t * get_streams (const uint64_t gpu) const noexcept {
+    cudaStream_t * get_streams (const gpu_id_t gpu) const noexcept {
 
         // return pointer to all num_gpus many streams of GPU gpu
         return streams+gpu*num_gpus;
     }
 
-    void sync_gpu_streams (const uint64_t gpu) const noexcept {
+    void sync_gpu_streams (const gpu_id_t gpu) const noexcept {
 
         // sync all streams associated with the corresponding GPU
         cudaSetDevice(get_device_id(gpu)); CUERR
-        for (uint64_t part = 0; part < num_gpus; ++part)
+        for (gpu_id_t part = 0; part < num_gpus; ++part)
             cudaStreamSynchronize(get_streams(gpu)[part]);
         CUERR
     }
@@ -157,7 +157,7 @@ public:
     void sync_all_streams () const noexcept {
 
         // sync all streams of the context
-        for (uint64_t gpu = 0; gpu < num_gpus; ++gpu)
+        for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu)
             sync_gpu_streams(gpu);
         CUERR
     }
@@ -165,7 +165,7 @@ public:
     void sync_hard () const noexcept {
 
         // sync all GPUs
-        for (uint64_t gpu = 0; gpu < num_gpus; ++gpu) {
+        for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
             cudaSetDevice(get_device_id(gpu));
             cudaDeviceSynchronize();
         } CUERR
@@ -179,8 +179,8 @@ public:
 
     void print_connectivity_matrix () const {
         std::cout << "STATUS: connectivity matrix:" << std::endl;
-        for (uint64_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu)
-            for (uint64_t dst_gpu = 0; dst_gpu < num_gpus; ++dst_gpu)
+        for (gpu_id_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu)
+            for (gpu_id_t dst_gpu = 0; dst_gpu < num_gpus; ++dst_gpu)
                 std::cout << (dst_gpu == 0 ? "STATUS: |" : "")
                           << uint64_t(peer_status[src_gpu][dst_gpu])
                           << (dst_gpu+1 == num_gpus ? "|\n" : " ");

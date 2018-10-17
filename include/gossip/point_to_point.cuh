@@ -1,8 +1,8 @@
 #pragma once
 
 template <
-    uint64_t num_gpus,
-    uint64_t throw_exceptions=true>
+    gpu_id_t num_gpus,
+    bool throw_exceptions=true>
 class point2point_t {
 
     const context_t<num_gpus> * context;
@@ -11,7 +11,7 @@ class point2point_t {
 public:
 
     point2point_t (
-        uint64_t * device_ids_=0) : external_context (false) {
+        gpu_id_t * device_ids_=0) : external_context (false) {
 
         if (device_ids_)
             context = new context_t<num_gpus>(device_ids_);
@@ -43,7 +43,7 @@ public:
         value_t * dsts[num_gpus],
         index_t   lens[num_gpus]) const noexcept {
 
-        for (uint64_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
+        for (gpu_id_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
             cudaSetDevice(context->get_device_id(src_gpu));
             cudaMemcpyAsync(dsts[src_gpu], srcs[src_gpu],
                             sizeof(value_t)*lens[src_gpu],

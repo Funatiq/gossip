@@ -1,8 +1,8 @@
 #pragma once
 
 template<
-    uint64_t num_gpus,
-    uint64_t throw_exceptions=true>
+    gpu_id_t num_gpus,
+    bool throw_exceptions=true>
 class all2all_t {
 
     context_t<num_gpus> * context;
@@ -11,7 +11,7 @@ class all2all_t {
 public:
 
     all2all_t (
-        uint64_t * device_ids_=0) : external_context (false){
+        gpu_id_t * device_ids_=0) : external_context (false){
 
         if (device_ids_)
             context = new context_t<num_gpus>(device_ids_);
@@ -51,11 +51,11 @@ public:
             context->sync_hard();
 
         // compute prefix sums over the partition table
-        uint64_t h_table[num_gpus][num_gpus+1] = {0}; // horizontal scan
-        uint64_t v_table[num_gpus+1][num_gpus] = {0}; // vertical scan
+        size_t h_table[num_gpus][num_gpus+1] = {0}; // horizontal scan
+        size_t v_table[num_gpus+1][num_gpus] = {0}; // vertical scan
 
-        for (uint64_t gpu = 0; gpu < num_gpus; ++gpu) {
-            for (uint64_t part = 0; part < num_gpus; ++part) {
+        for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
+            for (gpu_id_t part = 0; part < num_gpus; ++part) {
                 h_table[gpu][part+1] = table[gpu][part]+h_table[gpu][part];
                 v_table[gpu+1][part] = table[gpu][part]+v_table[gpu][part];
             }
@@ -63,7 +63,7 @@ public:
 
         // check src_lens for compatibility
         bool valid_srcs_lens = true;
-        for (uint64_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu)
+        for (gpu_id_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu)
             valid_srcs_lens &= h_table[src_gpu][num_gpus]
                             <= srcs_lens[src_gpu];
         if (!valid_srcs_lens)
@@ -74,7 +74,7 @@ public:
 
         // check dst_lens for compatibility
         bool valid_dsts_lens = true;
-        for (uint64_t dst_gpu = 0; dst_gpu < num_gpus; ++dst_gpu)
+        for (gpu_id_t dst_gpu = 0; dst_gpu < num_gpus; ++dst_gpu)
             valid_dsts_lens &= v_table[num_gpus][dst_gpu]
                             <= dsts_lens[dst_gpu];
         if (!valid_dsts_lens)
@@ -84,12 +84,12 @@ public:
             else return false;
 
         // issue asynchronous copies
-        for (uint64_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
-            const uint64_t src = context->get_device_id(src_gpu);
+        for (gpu_id_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
+            const gpu_id_t src = context->get_device_id(src_gpu);
             cudaSetDevice(src);
-            for (uint64_t dst_gpu = 0; dst_gpu < num_gpus; ++dst_gpu) {
-                const uint64_t dst = context->get_device_id(dst_gpu);
-                const uint64_t len = table[src_gpu][dst_gpu];
+            for (gpu_id_t dst_gpu = 0; dst_gpu < num_gpus; ++dst_gpu) {
+                const gpu_id_t dst = context->get_device_id(dst_gpu);
+                const table_t len = table[src_gpu][dst_gpu];
                 value_t * from = srcs[src_gpu] + h_table[src_gpu][dst_gpu];
                 value_t * to   = dsts[dst_gpu] + v_table[src_gpu][dst_gpu];
 

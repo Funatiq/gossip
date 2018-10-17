@@ -1,12 +1,12 @@
 #pragma once
 
 template <
-    uint64_t num_gpus>
+    gpu_id_t num_gpus>
 struct part_hash {
     template <
         typename index_t> __host__ __device__ __forceinline__
-    uint64_t operator()(index_t x) const {
-        return uint64_t(x) % (num_gpus+1);
+    gpu_id_t operator()(index_t x) const {
+        return gpu_id_t(x) % (num_gpus+1);
     }
 };
 /*

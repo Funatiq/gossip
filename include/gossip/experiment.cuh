@@ -1,8 +1,8 @@
 #pragma once
 
 template <
-    uint64_t num_gpus,
-    uint64_t throw_exceptions=true>
+    gpu_id_t num_gpus,
+    bool throw_exceptions=true>
 class experiment_t {
 
     const context_t<num_gpus> * context;
@@ -11,7 +11,7 @@ class experiment_t {
 public:
 
     experiment_t (
-        uint64_t * device_ids_=0) : external_context (false) {
+        gpu_id_t * device_ids_=0) : external_context (false) {
 
         if (device_ids_)
             context = new context_t<num_gpus>(device_ids_);
@@ -47,8 +47,8 @@ public:
         std::uniform_int_distribution<uint64_t> rho;
 
         // fill the source array according to the partition table
-        for (uint64_t gpu = 0; gpu < num_gpus; ++gpu)
-            for (uint64_t index = 0; index < srcs_lens[gpu]; ++index)
+        for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu)
+            for (index_t index = 0; index < srcs_lens[gpu]; ++index)
                 srcs_host[gpu][index] = rho(engine) % (num_gpus+1);
 
 
@@ -57,24 +57,25 @@ public:
 
     template <
         typename value_t,
-        typename index_t>
+        typename index_t,
+        typename table_t>
     bool validate_all2all_host(
         value_t *dsts_host[num_gpus],
         index_t  dsts_lens[num_gpus],
-        index_t table[num_gpus][num_gpus]) const {
+        table_t table[num_gpus][num_gpus]) const {
 
         // compute prefix sums over the partition table
-        uint64_t v_table[num_gpus+1][num_gpus] = {0}; // vertical scan
+        size_t v_table[num_gpus+1][num_gpus] = {0}; // vertical scan
 
-        for (uint64_t gpu = 0; gpu < num_gpus; ++gpu) {
-            for (uint64_t part = 0; part < num_gpus; ++part) {
+        for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
+            for (gpu_id_t part = 0; part < num_gpus; ++part) {
                 v_table[gpu+1][part] = table[gpu][part]+v_table[gpu][part];
             }
         }
 
-        for (uint64_t gpu = 0; gpu < num_gpus; ++gpu) {
+        for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
             uint64_t accum = 0;
-            for (uint64_t i = 0; i < dsts_lens[gpu]; ++i)
+            for (index_t i = 0; i < dsts_lens[gpu]; ++i)
                 accum += dsts_host[gpu][i] == gpu+1;
             if (accum != v_table[num_gpus][gpu]) {
                 std::cout << "ERROR: dsts entries differ from expectation "

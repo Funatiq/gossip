@@ -1,8 +1,8 @@
 #pragma once
 
 template<
-    uint64_t num_gpus,
-    uint64_t throw_exceptions=true>
+    gpu_id_t num_gpus,
+    bool throw_exceptions=true>
 class memory_manager_t {
 
     context_t<num_gpus> * context;
@@ -11,7 +11,7 @@ class memory_manager_t {
 public:
 
     memory_manager_t (
-        uint64_t * device_ids_=0) : external_context (false) {
+        gpu_id_t * device_ids_=0) : external_context (false) {
 
         if (device_ids_)
             context = new context_t<num_gpus>(device_ids_);
@@ -43,7 +43,7 @@ public:
         value_t ** data = new value_t*[num_gpus];
 
         // malloc as device-sided memory
-        for (uint64_t gpu = 0; gpu < num_gpus; ++gpu) {
+        for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
             cudaSetDevice(context->get_device_id(gpu));
             cudaMalloc(&data[gpu], sizeof(value_t)*lens[gpu]);
             if (zero)
@@ -63,7 +63,7 @@ public:
         value_t ** data = new value_t*[num_gpus];
 
         // malloc as host-sided pinned memory
-        for (uint64_t gpu = 0; gpu < num_gpus; ++gpu) {
+        for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
             cudaMallocHost(&data[gpu], sizeof(value_t)*lens[gpu]);
             if (zero)
                 std::memset(data[gpu], 0, sizeof(value_t)*lens[gpu]);
@@ -77,7 +77,7 @@ public:
         typename value_t>
     void free_device(value_t ** data) const {
 
-        for (uint64_t gpu = 0; gpu < num_gpus; ++gpu) {
+        for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
             cudaSetDevice(context->get_device_id(gpu));
             cudaFree(data[gpu]);
         }
@@ -90,7 +90,7 @@ public:
         typename value_t>
     void free_host(value_t ** data) const {
 
-        for (uint64_t gpu = 0; gpu < num_gpus; ++gpu)
+        for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu)
             cudaFreeHost(data[gpu]);
         CUERR
 
