@@ -12,12 +12,10 @@ class all2all_dgx1v_t {
 
 public:
     all2all_dgx1v_t (
-        gpu_id_t * device_ids_=0) : external_context (false){
+        std::vector<gpu_id_t>& device_ids_ = std::vector<gpu_id_t>{})
+        : external_context (false) {
 
-        if (device_ids_)
-            context = new context_t<num_gpus>(device_ids_);
-        else
-            context = new context_t<num_gpus>();
+        context = new context_t<num_gpus>(device_ids_);
     }
 
     all2all_dgx1v_t (
@@ -61,13 +59,14 @@ private:
         std::vector<transfer> phase_one = {};
         std::vector<transfer> phase_two = {};
 
-        size_t phase_one_offsets[num_gpus] = {0};
-        size_t phase_two_offsets[num_gpus] = {0};
+        std::array<size_t, num_gpus> phase_one_offsets = {};
+        std::array<size_t, num_gpus> phase_two_offsets = {};
 
-        const table_t (&table)[num_gpus][num_gpus];
-        size_t h_table[num_gpus][num_gpus+1] = {{0}}; // horizontal scan
+        const std::array<std::array<table_t, num_gpus>, num_gpus>& table;
+        std::array<std::array<table_t, num_gpus+1>, num_gpus> h_table = {};
 
-        transfer_handler(const table_t (&table)[num_gpus][num_gpus]) : table(table) {
+        transfer_handler(const std::array<std::array<table_t, num_gpus>, num_gpus>& table) : table(table) {
+            // horizontal scan
             for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
                 for (gpu_id_t part = 0; part < num_gpus; ++part) {
                     h_table[gpu][part+1] = table[gpu][part]+h_table[gpu][part];
@@ -103,8 +102,8 @@ private:
     }
 
     template<typename value_t>
-    void execute_phase(value_t * srcs[num_gpus],
-                       value_t * dsts[num_gpus],
+    void execute_phase(const std::array<value_t *, num_gpus>& srcs,
+                       const std::array<value_t *, num_gpus>& dsts,
                        const std::vector<transfer>& transfers) const {
         for(const transfer& t : transfers) {
             const gpu_id_t src = context->get_device_id(t.src_gpu);
@@ -123,7 +122,8 @@ private:
     template <
         typename value_t,
         typename index_t>
-    void clear(value_t * mem[num_gpus], index_t mem_lens[num_gpus]) {
+    void clear(const std::array<value_t *, num_gpus>& mem,
+               const std::array<index_t  , num_gpus>& mem_lens) const {
         context->sync_all_streams();
         for (gpu_id_t gpu = 0; gpu < num_gpus; gpu++) {
             const gpu_id_t id = context->get_device_id(gpu);
@@ -141,11 +141,11 @@ public:
         typename index_t,
         typename table_t>
     bool execAsync (
-        value_t * srcs[num_gpus],        // src[k] resides on device_ids[k]
-        const index_t (&srcs_lens)[num_gpus],     // src_len[k] is length of src[k]
-        value_t * dsts[num_gpus],        // dst[k] resides on device_ids[k]
-        const index_t (&dsts_lens)[num_gpus],     // dst_len[0] is length of dst[k]
-        const table_t (&table)[num_gpus][num_gpus]) const {  // [src_gpu, partition]
+        const std::array<value_t *, num_gpus>& srcs,    // src[k] resides on device_ids[k]
+        const std::array<index_t  , num_gpus>& srcs_lens, // src_len[k] is length of src[k]
+        const std::array<value_t *, num_gpus>& dsts,    // dst[k] resides on device_ids[k]
+        const std::array<index_t  , num_gpus>& dsts_lens, // dst_len[k] is length of dst[k]
+        const std::array<std::array<table_t, num_gpus>, num_gpus>& table) const {  // [src_gpu, partition]
 
         // syncs with zero stream in order to enforce sequential
         // consistency with traditional synchronous memcpy calls

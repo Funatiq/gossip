@@ -11,12 +11,10 @@ class point2point_t {
 public:
 
     point2point_t (
-        gpu_id_t * device_ids_=0) : external_context (false) {
+        std::vector<gpu_id_t>& device_ids_ = std::vector<gpu_id_t>{})
+        : external_context (false) {
 
-        if (device_ids_)
-            context = new context_t<num_gpus>(device_ids_);
-        else
-            context = new context_t<num_gpus>();
+        context = new context_t<num_gpus>(device_ids_);
     }
 
     point2point_t (
@@ -39,9 +37,9 @@ public:
         typename value_t,
         typename index_t>
     bool execAsync (
-        value_t * srcs[num_gpus],
-        value_t * dsts[num_gpus],
-        index_t   lens[num_gpus]) const noexcept {
+        const std::array<value_t *, num_gpus>& srcs,
+        const std::array<value_t *, num_gpus>& dsts,
+        const std::array<index_t  , num_gpus>& lens) const noexcept {
 
         for (gpu_id_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
             cudaSetDevice(context->get_device_id(src_gpu));
@@ -58,9 +56,9 @@ public:
         typename value_t,
         typename index_t>
     bool execH2DAsync (
-        value_t * srcs[num_gpus],
-        value_t * dsts[num_gpus],
-        index_t   lens[num_gpus]) const noexcept {
+        const std::array<value_t *, num_gpus>& srcs,
+        const std::array<value_t *, num_gpus>& dsts,
+        const std::array<index_t  , num_gpus>& lens) const noexcept {
 
         return execAsync<cudaMemcpyHostToDevice>(srcs, dsts, lens);
     }
@@ -69,9 +67,9 @@ public:
         typename value_t,
         typename index_t>
     bool execD2HAsync (
-        value_t * srcs[num_gpus],
-        value_t * dsts[num_gpus],
-        index_t   lens[num_gpus]) const noexcept {
+        const std::array<value_t *, num_gpus>& srcs,
+        const std::array<value_t *, num_gpus>& dsts,
+        const std::array<index_t  , num_gpus>& lens) const noexcept {
 
         return execAsync<cudaMemcpyDeviceToHost>(srcs, dsts, lens);
     }
@@ -80,9 +78,9 @@ public:
         typename value_t,
         typename index_t>
     bool execD2DAsync (
-        value_t * srcs[num_gpus],
-        value_t * dsts[num_gpus],
-        index_t   lens[num_gpus]) const noexcept {
+        const std::array<value_t *, num_gpus>& srcs,
+        const std::array<value_t *, num_gpus>& dsts,
+        const std::array<index_t  , num_gpus>& lens) const noexcept {
 
         return execAsync<cudaMemcpyDeviceToDevice>(srcs, dsts, lens);
     }

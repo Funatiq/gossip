@@ -11,12 +11,10 @@ class all2all_t {
 public:
 
     all2all_t (
-        gpu_id_t * device_ids_=0) : external_context (false){
+        std::vector<gpu_id_t>& device_ids_ = std::vector<gpu_id_t>{})
+        : external_context (false) {
 
-        if (device_ids_)
-            context = new context_t<num_gpus>(device_ids_);
-        else
-            context = new context_t<num_gpus>();
+        context = new context_t<num_gpus>(device_ids_);
     }
 
     all2all_t (
@@ -39,11 +37,11 @@ public:
         typename index_t,
         typename table_t>
     bool execAsync (
-        value_t * srcs[num_gpus],        // src[k] resides on device_ids[k]
-        index_t srcs_lens[num_gpus],     // src_len[k] is length of src[k]
-        value_t * dsts[num_gpus],        // dst[k] resides on device_ids[k]
-        index_t dsts_lens[num_gpus],     // dst_len[0] is length of dst[k]
-        table_t table[num_gpus][num_gpus]) const {  // [src_gpu, partition]
+        const std::array<value_t *, num_gpus>& srcs,      // src[k] resides on device_ids[k]
+        const std::array<index_t  , num_gpus>& srcs_lens, // src_len[k] is length of src[k]
+        const std::array<value_t *, num_gpus>& dsts,      // dst[k] resides on device_ids[k]
+        const std::array<index_t  , num_gpus>& dsts_lens, // dst_len[k] is length of dst[k]
+        const std::array<std::array<table_t, num_gpus>, num_gpus>& table) const {  // [src_gpu, partition]
 
         // syncs with zero stream in order to enforce sequential
         // consistency with traditional synchronous memcpy calls

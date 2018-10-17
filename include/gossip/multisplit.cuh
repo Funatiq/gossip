@@ -35,18 +35,16 @@ class multisplit_t {
 
     context_t<num_gpus> * context;
     bool external_context;
-    cnter_t * counters_device[num_gpus];
-    cnter_t * counters_host[num_gpus];
+    std::array<cnter_t *, num_gpus> counters_device;
+    std::array<cnter_t *, num_gpus> counters_host;
 
 public:
 
     multisplit_t (
-        gpu_id_t * device_ids_=0) : external_context (false) {
+        std::vector<gpu_id_t>& device_ids_ = std::vector<gpu_id_t>{})
+        : external_context (false) {
 
-        if (device_ids_)
-            context = new context_t<num_gpus>(device_ids_);
-        else
-            context = new context_t<num_gpus>();
+        context = new context_t<num_gpus>(device_ids_);
 
         for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
             cudaSetDevice(context->get_device_id(gpu));
@@ -89,12 +87,12 @@ public:
         typename table_t,
         typename funct_t>
     bool execAsync (
-        value_t * srcs[num_gpus],
-        index_t   srcs_lens[num_gpus],
-        value_t * dsts[num_gpus],
-        index_t   dsts_lens[num_gpus],
-        table_t   table[num_gpus][num_gpus],
-        funct_t   functor) const noexcept {
+        const std::array<value_t *, num_gpus>& srcs,
+        const std::array<index_t  , num_gpus>& srcs_lens,
+        const std::array<value_t *, num_gpus>& dsts,
+        const std::array<index_t  , num_gpus>& dsts_lens,
+        std::array<std::array<table_t, num_gpus>, num_gpus>& table,
+        funct_t functor) const noexcept {
 
         for (gpu_id_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
             if (srcs_lens[src_gpu] > dsts_lens[src_gpu])

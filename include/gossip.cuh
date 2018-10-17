@@ -4,6 +4,8 @@
 #include <random>
 #include <cstring>
 #include <stdexcept>
+#include <array>
+#include <vector>
 #include "cudahelpers/cuda_helpers.cuh"
 
 namespace gossip {

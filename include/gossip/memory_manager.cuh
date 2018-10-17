@@ -11,12 +11,10 @@ class memory_manager_t {
 public:
 
     memory_manager_t (
-        gpu_id_t * device_ids_=0) : external_context (false) {
+        std::vector<gpu_id_t>& device_ids_ = std::vector<gpu_id_t>{})
+        : external_context (false) {
 
-        if (device_ids_)
-            context = new context_t<num_gpus>(device_ids_);
-        else
-            context = new context_t<num_gpus>();
+        context = new context_t<num_gpus>(device_ids_);
     }
 
     memory_manager_t (
@@ -38,9 +36,12 @@ public:
     template <
         typename value_t,
         typename index_t>
-    value_t ** alloc_device(index_t lens[num_gpus], bool zero=true) const {
+    std::array<value_t *, num_gpus>
+    alloc_device(
+        const std::array<index_t, num_gpus>& lens,
+        const bool zero=true) const {
 
-        value_t ** data = new value_t*[num_gpus];
+        std::array<value_t *, num_gpus> data;
 
         // malloc as device-sided memory
         for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
@@ -52,15 +53,18 @@ public:
         }
         CUERR
 
-        return data;
+        return std::move(data);
     }
 
     template <
         typename value_t,
         typename index_t>
-    value_t ** alloc_host(index_t lens[num_gpus], bool zero=true) const {
+    std::array<value_t *, num_gpus>
+    alloc_host(
+        const std::array<index_t, num_gpus>& lens,
+        const bool zero=true) const {
 
-        value_t ** data = new value_t*[num_gpus];
+        std::array<value_t *, num_gpus> data;
 
         // malloc as host-sided pinned memory
         for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
@@ -70,30 +74,26 @@ public:
         }
         CUERR
 
-        return data;
+        return std::move(data);
     }
 
     template <
         typename value_t>
-    void free_device(value_t ** data) const {
+    void free_device(std::array<value_t *, num_gpus>& data) const {
 
         for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
             cudaSetDevice(context->get_device_id(gpu));
             cudaFree(data[gpu]);
         }
         CUERR
-
-        delete [] data;
     }
 
     template <
         typename value_t>
-    void free_host(value_t ** data) const {
+    void free_host(std::array<value_t *, num_gpus>& data) const {
 
         for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu)
             cudaFreeHost(data[gpu]);
         CUERR
-
-        delete [] data;
     }
 };

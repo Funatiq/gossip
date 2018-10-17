@@ -11,12 +11,10 @@ class experiment_t {
 public:
 
     experiment_t (
-        gpu_id_t * device_ids_=0) : external_context (false) {
+        std::vector<gpu_id_t>& device_ids_ = std::vector<gpu_id_t>{})
+        : external_context (false) {
 
-        if (device_ids_)
-            context = new context_t<num_gpus>(device_ids_);
-        else
-            context = new context_t<num_gpus>();
+        context = new context_t<num_gpus>(device_ids_);
     }
 
     experiment_t (
@@ -38,8 +36,8 @@ public:
         typename value_t,
         typename index_t>
     bool create_random_data_host(
-        value_t *srcs_host[num_gpus],
-        index_t  srcs_lens[num_gpus]) const {
+        const std::array<std::array<value_t *, num_gpus>, num_gpus>& srcs_host,
+        const std::array<index_t, num_gpus>& srcs_lens) const {
 
         // initialize RNG
         std::random_device rd;
@@ -60,13 +58,15 @@ public:
         typename index_t,
         typename table_t>
     bool validate_all2all_host(
-        value_t *dsts_host[num_gpus],
-        index_t  dsts_lens[num_gpus],
-        table_t table[num_gpus][num_gpus]) const {
+        const std::array<std::array<value_t *, num_gpus>, num_gpus>& dsts_host,
+        const std::array<index_t, num_gpus>& dsts_lens,
+        const std::array<std::array<table_t, num_gpus>, num_gpus>& table
+    ) const {
 
         // compute prefix sums over the partition table
-        size_t v_table[num_gpus+1][num_gpus] = {0}; // vertical scan
-
+        // vertical scan
+        std::array<std::array<table_t, num_gpus>, num_gpus+1> v_table = {};
+        
         for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
             for (gpu_id_t part = 0; part < num_gpus; ++part) {
                 v_table[gpu+1][part] = table[gpu][part]+v_table[gpu][part];

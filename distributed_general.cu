@@ -1,5 +1,6 @@
 #include <iostream>
 #include <cstdint>
+#include <vector>
 #include "include/gossip.cuh"
 #include "distributed.cuh"
 
@@ -12,7 +13,7 @@ int main () {
 
     uint64_t batch_size = 1UL << 29;
     uint64_t batch_size_secure = batch_size * security_factor;
-    gpu_id_t device_ids[num_gpus] = {0, 1, 2, 3, 4, 5, 6, 7};
+    std::vector<gpu_id_t> device_ids = {0, 1, 2, 3, 4, 5, 6, 7};
 
     auto context = new gossip::context_t<num_gpus>(device_ids);
     auto all2all = new gossip::all2all_t<num_gpus>(context);
