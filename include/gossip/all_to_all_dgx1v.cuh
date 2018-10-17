@@ -65,7 +65,7 @@ private:
         uint64_t phase_two_offsets[num_gpus] = {0};
 
         const table_t (&table)[num_gpus][num_gpus];
-        uint64_t h_table[num_gpus][num_gpus+1] = {0}; // horizontal scan
+        uint64_t h_table[num_gpus][num_gpus+1] = {{0}}; // horizontal scan
 
         transfer_handler(const table_t (&table)[num_gpus][num_gpus]) : table(table) {
             for (uint64_t gpu = 0; gpu < num_gpus; ++gpu) {
