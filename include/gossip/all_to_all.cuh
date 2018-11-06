@@ -1,30 +1,41 @@
 #pragma once
 
 template<
-    gpu_id_t num_gpus,
     bool throw_exceptions=true>
 class all2all_t {
 
-    context_t<num_gpus> * context;
+    gpu_id_t num_gpus;
+    context_t<> * context;
     bool external_context;
 
 public:
-
     all2all_t (
-        std::vector<gpu_id_t>& device_ids_ = std::vector<gpu_id_t>{})
+        const gpu_id_t num_gpus_)
         : external_context (false) {
 
-        context = new context_t<num_gpus>(device_ids_);
+        context = new context_t<>(num_gpus_);
+        num_gpus = context->get_num_devices();
     }
 
     all2all_t (
-        context_t<num_gpus> * context_) : context(context_),
-                                          external_context (true) {
-            if (throw_exceptions)
-                if (!context->is_valid())
-                    throw std::invalid_argument(
-                        "You have to pass a valid context!"
-                    );
+        std::vector<gpu_id_t>& device_ids_)
+        : external_context (false) {
+
+        context = new context_t<>(device_ids_);
+        num_gpus = context->get_num_devices();
+    }
+
+    all2all_t (
+        context_t<> * context_) : context(context_),
+                                  external_context (true) {
+
+        if (throw_exceptions)
+            if (!context->is_valid())
+                throw std::invalid_argument(
+                    "You have to pass a valid context!"
+                );
+
+        num_gpus = context->get_num_devices();
     }
 
     ~all2all_t () {
@@ -37,11 +48,43 @@ public:
         typename index_t,
         typename table_t>
     bool execAsync (
-        const std::array<value_t *, num_gpus>& srcs,      // src[k] resides on device_ids[k]
-        const std::array<index_t  , num_gpus>& srcs_lens, // src_len[k] is length of src[k]
-        const std::array<value_t *, num_gpus>& dsts,      // dst[k] resides on device_ids[k]
-        const std::array<index_t  , num_gpus>& dsts_lens, // dst_len[k] is length of dst[k]
-        const std::array<std::array<table_t, num_gpus>, num_gpus>& table) const {  // [src_gpu, partition]
+        const std::vector<value_t *>& srcs,      // src[k] resides on device_ids[k]
+        const std::vector<index_t  >& srcs_lens, // src_len[k] is length of src[k]
+        const std::vector<value_t *>& dsts,      // dst[k] resides on device_ids[k]
+        const std::vector<index_t  >& dsts_lens, // dst_len[k] is length of dst[k]
+        const std::vector<std::vector<table_t> >& table) const {  // [src_gpu, partition]
+
+        if (srcs.size() != num_gpus)
+            if (throw_exceptions)
+                throw std::invalid_argument(
+                    "srcs size does not match number of gpus.");
+            else return false;
+        if (srcs_lens.size() != num_gpus)
+            if (throw_exceptions)
+                throw std::invalid_argument(
+                    "srcs_lens size does not match number of gpus.");
+            else return false;
+        if (dsts.size() != num_gpus)
+            if (throw_exceptions)
+                throw std::invalid_argument(
+                    "dsts size does not match number of gpus.");
+            else return false;
+        if (dsts_lens.size() != num_gpus)
+            if (throw_exceptions)
+                throw std::invalid_argument(
+                    "dsts_lens size does not match number of gpus.");
+            else return false;
+        if (table.size() != num_gpus)
+            if (throw_exceptions)
+                throw std::invalid_argument(
+                    "table size does not match number of gpus.");
+            else return false;
+        for (const auto& t : table)
+            if (t.size() != num_gpus)
+                if (throw_exceptions)
+                    throw std::invalid_argument(
+                        "table size does not match number of gpus.");
+                else return false;
 
         // syncs with zero stream in order to enforce sequential
         // consistency with traditional synchronous memcpy calls

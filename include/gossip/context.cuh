@@ -1,34 +1,61 @@
 #pragma once
 
+#include <numeric>
+
 template <
-    gpu_id_t num_gpus,
     bool throw_exceptions=true,
     uint64_t PEER_STATUS_SLOW=0,
     uint64_t PEER_STATUS_DIAG=1,
     uint64_t PEER_STATUS_FAST=2>
 class context_t {
 
-    std::array<gpu_id_t, num_gpus>  device_ids;
-    std::array<std::array<cudaStream_t, num_gpus>, num_gpus> streams;
-    std::array<std::array<uint64_t, num_gpus>, num_gpus> peer_status;
+    gpu_id_t num_gpus;
+    std::vector<gpu_id_t> device_ids;
+    std::vector<std::vector<cudaStream_t>> streams;
+    std::vector<std::vector<uint64_t>> peer_status;
     bool valid = true;
 
 public:
 
-    context_t (std::vector<gpu_id_t>& device_ids_ = std::vector<gpu_id_t>{}) {
+    context_t (const gpu_id_t num_gpus_) {
 
-        if(!device_ids_.empty() && device_ids_.size() != num_gpus) {
+        if(num_gpus_ < 1) {
+            valid = false;
+            if (throw_exceptions)
+                throw std::invalid_argument(
+                    "Invalid number of devices.");
+        }
+
+        num_gpus = num_gpus_;
+
+        device_ids.resize(num_gpus);
+        std::iota(device_ids.begin(), device_ids.end(), 0);
+
+        initialize();
+    }
+
+    context_t (std::vector<gpu_id_t>& device_ids_) {
+
+        if(device_ids_.empty()) {
             valid = false;
             if (throw_exceptions)
                 throw std::invalid_argument(
                     "Invalid number of device ids.");
         }
 
-        // copy num_gpus many device identifiers
-        for (gpu_id_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu)
-            device_ids[src_gpu] = src_gpu < device_ids_.size() ?
-                                  device_ids_[src_gpu] : src_gpu;
+        num_gpus = device_ids_.size();  
+        
+        device_ids = device_ids_;
 
+        initialize();
+    }
+
+private:
+    void initialize() {
+        if(!valid) return;
+
+        streams.resize(num_gpus, std::vector<cudaStream_t>(num_gpus));
+        
         // create num_gpus^2 streams where streams[gpu*num_gpus+part]
         // denotes the stream to be used for GPU gpu and partition part
         for (gpu_id_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
@@ -39,6 +66,7 @@ public:
             }
         } CUERR
 
+        peer_status.resize(num_gpus, std::vector<uint64_t>(num_gpus));
 
         // compute the connectivity matrix
         for (gpu_id_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
@@ -94,8 +122,11 @@ public:
             }
         } CUERR
     }
-
+    
+public:
     ~context_t () {
+
+        if(!valid) return;
 
         // synchronize and destroy streams
         for (gpu_id_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
@@ -135,13 +166,18 @@ public:
         } CUERR
     }
 
+    // return the number of devices belonging to context
+    gpu_id_t get_num_devices () const noexcept {
+        return num_gpus;
+    }
+
     // return the actual device identifier of specified GPU
     gpu_id_t get_device_id (const gpu_id_t gpu) const noexcept {
         return device_ids[gpu];
     }
 
-    // return array of streams associated with to specified GPU
-    std::array<cudaStream_t, num_gpus> get_streams (const gpu_id_t gpu) const noexcept {
+    // return vector of streams associated with to specified GPU
+    std::vector<cudaStream_t> get_streams (const gpu_id_t gpu) const noexcept {
         return streams[gpu];
     }
 

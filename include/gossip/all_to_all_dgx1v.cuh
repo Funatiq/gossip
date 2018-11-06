@@ -1,25 +1,40 @@
 #pragma once
 
 template<
-    gpu_id_t num_gpus,
     bool throw_exceptions=true>
 class all2all_dgx1v_t {
 
-    context_t<num_gpus> * context;
+    static constexpr gpu_id_t num_gpus = 8;
+    context_t<> * context;
     bool external_context;
-
-    static_assert(num_gpus==8, "currently only for exactly all GPUs.");
 
 public:
     all2all_dgx1v_t (
-        std::vector<gpu_id_t>& device_ids_ = std::vector<gpu_id_t>{})
+        const gpu_id_t num_gpus_)
         : external_context (false) {
 
-        context = new context_t<num_gpus>(device_ids_);
+        if (num_gpus_ != 8)
+            throw std::invalid_argument(
+                "currently only for exactly all 8 GPUs."
+            );
+
+        context = new context_t<>(num_gpus_);
+    }
+
+   all2all_dgx1v_t (
+        std::vector<gpu_id_t>& device_ids_)
+        : external_context (false) {
+
+        if (device_ids_.size() != 8)
+            throw std::invalid_argument(
+                "currently only for exactly all 8 GPUs."
+            );
+
+        context = new context_t<>(device_ids_);
     }
 
     all2all_dgx1v_t (
-        context_t<num_gpus> * context_) : context(context_),
+        context_t<> * context_) : context(context_),
                                           external_context (true) {
             if (throw_exceptions)
                 if (!context->is_valid())
@@ -56,16 +71,22 @@ private:
 
     template<typename table_t>
     struct transfer_handler {
-        std::vector<transfer> phase_one = {};
-        std::vector<transfer> phase_two = {};
+        std::vector<transfer> phase_one;
+        std::vector<transfer> phase_two;
 
-        std::array<size_t, num_gpus> phase_one_offsets = {};
-        std::array<size_t, num_gpus> phase_two_offsets = {};
+        std::vector<size_t> phase_one_offsets;
+        std::vector<size_t> phase_two_offsets;
 
-        const std::array<std::array<table_t, num_gpus>, num_gpus>& table;
-        std::array<std::array<table_t, num_gpus+1>, num_gpus> h_table = {};
+        const std::vector<std::vector<table_t> >& table;
+        std::vector<std::vector<table_t> > h_table;
 
-        transfer_handler(const std::array<std::array<table_t, num_gpus>, num_gpus>& table) : table(table) {
+
+        transfer_handler(const std::vector<std::vector<table_t>>& table)
+            : phase_one_offsets(num_gpus),
+              phase_two_offsets(num_gpus),
+              table(table),
+              h_table(num_gpus, std::vector<table_t>(num_gpus+1)) {
+
             // horizontal scan
             for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
                 for (gpu_id_t part = 0; part < num_gpus; ++part) {
@@ -82,10 +103,17 @@ private:
             phase_two_offsets[trg] += transfer_size;
         }
 
-        void one_to_all(const gpu_id_t src, const std::array<gpu_id_t, num_gpus>& proxies) {
+        bool one_to_all(const gpu_id_t src, const std::vector<gpu_id_t>& proxies) {
+            if (proxies.size() != num_gpus)
+                if (throw_exceptions)
+                    throw std::invalid_argument(
+                        "proxies size does not match number of gpus.");
+                else return false;
+
             for (gpu_id_t trg = 0; trg < num_gpus; ++trg) {
                 push_back(src, proxies[trg], trg);
             }
+            return true;
         }
 
     };
@@ -102,9 +130,22 @@ private:
     }
 
     template<typename value_t>
-    void execute_phase(const std::array<value_t *, num_gpus>& srcs,
-                       const std::array<value_t *, num_gpus>& dsts,
+    bool execute_phase(const std::vector<value_t *>& srcs,
+                       const std::vector<value_t *>& dsts,
                        const std::vector<transfer>& transfers) const {
+
+        if (srcs.size() != num_gpus)
+            if (throw_exceptions)
+                throw std::invalid_argument(
+                    "srcs size does not match number of gpus.");
+            else return false;
+        if (dsts.size() != num_gpus)
+            if (throw_exceptions)
+                throw std::invalid_argument(
+                    "dsts size does not match number of gpus.");
+            else return false;
+              
+
         for(const transfer& t : transfers) {
             const gpu_id_t src = context->get_device_id(t.src_gpu);
             const gpu_id_t trg = context->get_device_id(t.trg_gpu);
@@ -116,14 +157,28 @@ private:
 
             cudaMemcpyPeerAsync(to, trg, from, src, size, stream);
         } CUERR
+
+        return true;
     }
 
     // only for convenience
     template <
         typename value_t,
         typename index_t>
-    void clear(const std::array<value_t *, num_gpus>& mem,
-               const std::array<index_t  , num_gpus>& mem_lens) const {
+    bool clear(const std::vector<value_t *>& mem,
+               const std::vector<index_t  >& mem_lens) const {
+
+        if (mem.size() != num_gpus)
+            if (throw_exceptions)
+                throw std::invalid_argument(
+                    "mem size does not match number of gpus.");
+            else return false;
+        if (mem_lens.size() != num_gpus)
+            if (throw_exceptions)
+                throw std::invalid_argument(
+                    "mem_lens size does not match number of gpus.");
+            else return false;
+
         context->sync_all_streams();
         for (gpu_id_t gpu = 0; gpu < num_gpus; gpu++) {
             const gpu_id_t id = context->get_device_id(gpu);
@@ -133,6 +188,8 @@ private:
                               * sizeof(value_t);
             cudaMemsetAsync(mem[gpu], 0, size, stream);
         } CUERR
+
+        return true;
     }
 
 public:
@@ -141,11 +198,44 @@ public:
         typename index_t,
         typename table_t>
     bool execAsync (
-        const std::array<value_t *, num_gpus>& srcs,    // src[k] resides on device_ids[k]
-        const std::array<index_t  , num_gpus>& srcs_lens, // src_len[k] is length of src[k]
-        const std::array<value_t *, num_gpus>& dsts,    // dst[k] resides on device_ids[k]
-        const std::array<index_t  , num_gpus>& dsts_lens, // dst_len[k] is length of dst[k]
-        const std::array<std::array<table_t, num_gpus>, num_gpus>& table) const {  // [src_gpu, partition]
+        const std::vector<value_t *>& srcs,      // src[k] resides on device_ids[k]
+        const std::vector<index_t  >& srcs_lens, // src_len[k] is length of src[k]
+        const std::vector<value_t *>& dsts,      // dst[k] resides on device_ids[k]
+        const std::vector<index_t  >& dsts_lens, // dst_len[k] is length of dst[k]
+        const std::vector<std::vector<table_t> >& table) const {  // [src_gpu, partition]
+
+        if (srcs.size() != num_gpus)
+            if (throw_exceptions)
+                throw std::invalid_argument(
+                    "srcs size does not match number of gpus.");
+            else return false;
+        if (srcs_lens.size() != num_gpus)
+            if (throw_exceptions)
+                throw std::invalid_argument(
+                    "srcs_lens size does not match number of gpus.");
+            else return false;
+        if (dsts.size() != num_gpus)
+            if (throw_exceptions)
+                throw std::invalid_argument(
+                    "dsts size does not match number of gpus.");
+            else return false;
+        if (dsts_lens.size() != num_gpus)
+            if (throw_exceptions)
+                throw std::invalid_argument(
+                    "dsts_lens size does not match number of gpus.");
+            else return false;
+        if (table.size() != num_gpus)
+            if (throw_exceptions)
+                throw std::invalid_argument(
+                    "table size does not match number of gpus.");
+            else return false;
+        for (const auto& t : table)
+            if (t.size() != num_gpus)
+                if (throw_exceptions)
+                    throw std::invalid_argument(
+                        "table size does not match number of gpus.");
+                else return false;
+
 
         // syncs with zero stream in order to enforce sequential
         // consistency with traditional synchronous memcpy calls

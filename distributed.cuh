@@ -46,7 +46,6 @@ __host__ __device__ uint64_t fmix64(uint64_t k) {
 }
 
 template<
-    gpu_id_t num_gpus,
     typename data_t,
     class T1,
     class T2,
@@ -59,8 +58,10 @@ void run(T1* context,
          const size_t batch_size,
          const size_t batch_size_secure) {
 
-    std::array<data_t *, num_gpus> ying;
-    std::array<data_t *, num_gpus> yang;
+    gpu_id_t num_gpus = context->get_num_devices();
+
+    std::vector<data_t *> ying(num_gpus);
+    std::vector<data_t *> yang(num_gpus);
 
     for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
         cudaSetDevice(context->get_device_id(gpu));
@@ -99,9 +100,9 @@ void run(T1* context,
 
     // this array partitions the widthcontext->get_device_id(gpu) many elements into
     // num_gpus many portions of approximately equal size
-    std::array<data_t *, num_gpus> srcs = {};
-    std::array<data_t *, num_gpus> dsts = {};
-    std::array<size_t  , num_gpus> lens = {};
+    std::vector<data_t *> srcs(num_gpus);
+    std::vector<data_t *> dsts(num_gpus);
+    std::vector<size_t  > lens(num_gpus);
 
     for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
         const size_t lower = gpu*batch_size;
@@ -127,8 +128,8 @@ void run(T1* context,
         return (x % num_gpus) + 1;
     };
 
+    std::vector<std::vector<size_t>> table(num_gpus, std::vector<size_t>(num_gpus));
     TIMERSTART(multisplit)
-    std::array<std::array<size_t, num_gpus>, num_gpus> table;
     multisplit->execAsync(srcs, lens, dsts, lens, table, part_hash);
     multisplit->sync();
     TIMERSTOP(multisplit)
@@ -140,8 +141,8 @@ void run(T1* context,
     std::cout << std::endl;
 
     // perform all to all communication
-    std::array<size_t, num_gpus> srcs_lens;
-    std::array<size_t, num_gpus> dsts_lens;
+    std::vector<size_t> srcs_lens(num_gpus);
+    std::vector<size_t> dsts_lens(num_gpus);
     for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
         srcs_lens[gpu] = batch_size_secure;
         dsts_lens[gpu] = batch_size_secure;
