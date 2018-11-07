@@ -198,9 +198,9 @@ public:
         typename index_t,
         typename table_t>
     bool execAsync (
-        const std::vector<value_t *>& srcs,      // src[k] resides on device_ids[k]
+        std::vector<value_t *>& srcs,      // src[k] resides on device_ids[k]
         const std::vector<index_t  >& srcs_lens, // src_len[k] is length of src[k]
-        const std::vector<value_t *>& dsts,      // dst[k] resides on device_ids[k]
+        std::vector<value_t *>& dsts,      // dst[k] resides on device_ids[k]
         const std::vector<index_t  >& dsts_lens, // dst_len[k] is length of dst[k]
         const std::vector<std::vector<table_t> >& table) const {  // [src_gpu, partition]
 
@@ -289,6 +289,10 @@ public:
          **********************************************************************/
         // show_phase(transfers.phase_two);
         execute_phase(dsts, srcs, transfers.phase_two);
+
+
+        // results should reside in dsts
+        srcs.swap(dsts);
 
         return true;
     }

@@ -30,7 +30,7 @@ void validate(
     for (uint64_t i = thid; i < length; i += blockDim.x*gridDim.x)
         if(predicate(data[i]) != device_id)
             printf("ERROR on gpu %lu at index %lu: %lu with predicate %lu \n",
-                    uint64_t(device_id-1), i, uint64_t(data[i]), uint64_t(data[i]) % 8);
+                    uint64_t(device_id-1), i, uint64_t(data[i]), predicate(data[i]));
 
 }
 
@@ -156,7 +156,7 @@ void run(T1* context,
     TIMERSTOP(all2all)
 
     TIMERSTART(validate)
-    size_t lengths[num_gpus];
+    std::vector<size_t> lengths(num_gpus);
     for (gpu_id_t trg = 0; trg < num_gpus; trg++) {
         lengths[trg] = 0;
         for (gpu_id_t src = 0; src < num_gpus; src++)
@@ -166,7 +166,7 @@ void run(T1* context,
     for (gpu_id_t gpu = 0; gpu < num_gpus; gpu++) {
         cudaSetDevice(context->get_device_id(gpu));
         validate<<<256, 1024, 0, context->get_streams(gpu)[0]>>>
-            (srcs[gpu], lengths[gpu], context->get_device_id(gpu)+1, part_hash);
+            (dsts[gpu], lengths[gpu], context->get_device_id(gpu)+1, part_hash);
     }
     CUERR
     TIMERSTOP(validate)
