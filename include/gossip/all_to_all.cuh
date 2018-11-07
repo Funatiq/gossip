@@ -211,11 +211,12 @@ public:
         typename index_t,
         typename table_t>
     bool execAsync (
-        const std::vector<value_t *>& srcs,      // src[k] resides on device_ids[k]
+        std::vector<value_t *>& srcs,      // src[k] resides on device_ids[k]
         const std::vector<index_t  >& srcs_lens, // src_len[k] is length of src[k]
-        const std::vector<value_t *>& dsts,      // dst[k] resides on device_ids[k]
+        std::vector<value_t *>& dsts,      // dst[k] resides on device_ids[k]
         const std::vector<index_t  >& dsts_lens, // dst_len[k] is length of dst[k]
-        const std::vector<std::vector<table_t> >& table) const {  // [src_gpu, partition]
+        const std::vector<std::vector<table_t> >& table,
+        const std::vector<std::vector<gpu_id_t> >& transfer_plan = {}) const {  // [src_gpu, partition]
 
         if (srcs.size() != num_gpus)
             if (throw_exceptions)
@@ -249,23 +250,81 @@ public:
                         "table size does not match number of gpus.");
                 else return false;
 
+        size_t num_phases = 1;
+
+        if (!transfer_plan.empty()) {
+            if (transfer_plan.size() != num_gpus*num_gpus)
+                if (throw_exceptions)
+                    throw std::invalid_argument(
+                        "number of planned sequences does not match number of gpus.");
+                else return false;
+
+            num_phases = transfer_plan[0].size()-1;
+
+            if (num_phases < 1)
+                if (throw_exceptions)
+                    throw std::invalid_argument(
+                        "planned sequence must be at least of length 2.");
+                else return false;
+            for (const auto& sequence : transfer_plan)
+                if (sequence.size() != num_phases+1)
+                    if (throw_exceptions)
+                        throw std::invalid_argument(
+                            "planned sequences must have same lengths.");
+                    else return false;
+            std::vector<std::vector<bool> > completeness(num_gpus, std::vector<bool>(num_gpus));
+            for (const auto& sequence : transfer_plan) {
+                completeness[sequence.front()][sequence.back()] = true;
+            }
+            for (gpu_id_t src = 0; src < num_gpus; ++src) {
+                for (gpu_id_t trg = 0; trg < num_gpus; ++trg) {
+                    if (!completeness[src][trg])
+                        if (throw_exceptions)
+                            throw std::invalid_argument(
+                                "transfer_plan is incomplete.");
+                        else return false;
+                }
+            }
+        }
+
+        transfer_handler<table_t> transfers(num_gpus, num_phases, table);
+
+        if (transfer_plan.empty()) {
+            // prepare direct transfers from src to trg gpu
+            for (gpu_id_t src = 0; src < num_gpus; ++src) {
+                for (gpu_id_t trg = 0; trg < num_gpus; ++trg) {
+                    transfers.push_back({src,trg});
+                }
+            }
+        }
+        else {
+            // prepare transfers according to transfer_plan
+            for (const auto& sequence : transfer_plan) {
+                transfers.push_back(sequence);
+            }
+        }
+
+        for (size_t p = 0; p < num_phases; ++p) {
+            // show_phase(transfers.phases[0]);
+            if(!check_phase_size(transfers.phases_offsets[p], dsts_lens)) return false;
+        }
+
         // syncs with zero stream in order to enforce sequential
         // consistency with traditional synchronous memcpy calls
         if (!external_context)
             context->sync_hard();
 
-        transfer_handler<table_t> transfers(num_gpus, 1, table);
+        for (size_t p = 0; p < num_phases; ++p) {
+            execute_phase(transfers.phases[p], srcs, dsts);
 
-        for (gpu_id_t src = 0; src < num_gpus; ++src) {
-            for (gpu_id_t trg = 0; trg < num_gpus; ++trg) {
-                transfers.push_back({src,trg});
+            if (p < num_phases-1) {
+                // swap srcs and dsts for next phase
+                srcs.swap(dsts);
+
+                // mandatory sync between phases
+                context->sync_all_streams();
             }
         }
-
-        // show_phase(transfers.phases[0]);
-        if(!check_phase_size(transfers.phases_offsets[0], dsts_lens)) return false;
-        
-        execute_phase(transfers.phases[0], srcs, dsts);
 
         return true;
     }
