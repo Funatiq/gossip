@@ -62,7 +62,7 @@ private:
             cudaSetDevice(get_device_id(src_gpu));
             cudaDeviceSynchronize();
             for (gpu_id_t part = 0; part < num_gpus; ++part) {
-                cudaStreamCreate(&get_streams(src_gpu)[part]);
+                cudaStreamCreate(&streams[src_gpu][part]);
             }
         } CUERR
 
@@ -134,7 +134,7 @@ public:
             cudaDeviceSynchronize();
             for (gpu_id_t part = 0; part < num_gpus; ++part) {
                 cudaStreamSynchronize(get_streams(src_gpu)[part]);
-                cudaStreamDestroy(get_streams(src_gpu)[part]);
+                cudaStreamDestroy(streams[src_gpu][part]);
             }
         } CUERR
 
@@ -177,7 +177,7 @@ public:
     }
 
     // return vector of streams associated with to specified GPU
-    std::vector<cudaStream_t> get_streams (const gpu_id_t gpu) const noexcept {
+    const std::vector<cudaStream_t>& get_streams (const gpu_id_t gpu) const noexcept {
         return streams[gpu];
     }
 
