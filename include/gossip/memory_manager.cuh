@@ -19,7 +19,7 @@ public:
     }
 
     memory_manager_t (
-        std::vector<gpu_id_t>& device_ids_)
+        const std::vector<gpu_id_t>& device_ids_)
         : external_context (false) {
 
         context = new context_t<>(device_ids_);

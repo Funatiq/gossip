@@ -56,8 +56,7 @@ void run(T1* context,
          T3* multisplit,
          T4* point2point,
          const size_t batch_size,
-         const size_t batch_size_secure,
-         const std::vector<std::vector<gpu_id_t> >& transfer_plan = {}) {
+         const size_t batch_size_secure) {
 
     gpu_id_t num_gpus = context->get_num_devices();
 
@@ -151,8 +150,10 @@ void run(T1* context,
         dsts[gpu] = ying[gpu];
     }
 
+    all2all->show_plan();
+
     TIMERSTART(all2all)
-    all2all->execAsync(srcs, srcs_lens, dsts, dsts_lens, table, transfer_plan);
+    all2all->execAsync(srcs, srcs_lens, dsts, dsts_lens, table);
     all2all->sync();
     TIMERSTOP(all2all)
 

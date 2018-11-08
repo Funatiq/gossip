@@ -34,7 +34,7 @@ public:
         initialize();
     }
 
-    context_t (std::vector<gpu_id_t>& device_ids_) {
+    context_t (const std::vector<gpu_id_t>& device_ids_) {
 
         if(device_ids_.empty()) {
             valid = false;
