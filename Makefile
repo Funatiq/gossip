@@ -1,6 +1,5 @@
 NVCC=nvcc
-# NVCCFLAGS=-O3 -std=c++14 -arch=sm_70 --expt-extended-lambda -Xcompiler="-fopenmp"
-NVCCFLAGS=-O3 -std=c++14 -arch=sm_61 --expt-extended-lambda -Xcompiler="-fopenmp"
+NVCCFLAGS=-O3 -std=c++14 -arch=sm_70 --expt-extended-lambda -Xcompiler="-fopenmp"
 
 HEADERS = include/gossip.cuh \
 		  include/gossip/auxiliary.cuh \
@@ -9,8 +8,9 @@ HEADERS = include/gossip.cuh \
 		  include/gossip/multisplit.cuh \
 		  include/gossip/point_to_point.cuh
 
-DGX = include/gossip/all_to_all_dgx1v.cuh
 GEN = include/gossip/all_to_all.cuh
+DGX = $(GEN) \
+      include/gossip/all_to_all_dgx1v.cuh
 
 .PHONY: all clean
 

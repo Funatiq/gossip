@@ -4,14 +4,16 @@ template<
     bool throw_exceptions=true>
 class all2all_t {
 
+protected:
     gpu_id_t num_gpus;
     context_t<> * context;
+private:
     bool external_context;
 
     size_t num_phases;
     std::vector<std::vector<gpu_id_t> > transfer_plan;
-
-    bool valid = true;
+    
+    bool plan_valid = true;
 
 public:
     all2all_t (
@@ -22,7 +24,9 @@ public:
         context = new context_t<>(num_gpus_);
         num_gpus = context->get_num_devices();
 
-        valid = verify_plan(transfer_plan_);
+        transfer_plan = transfer_plan_;
+        if(transfer_plan.empty()) load_default_plan();
+        plan_valid = verify_plan();
     }
 
     all2all_t (
@@ -33,7 +37,9 @@ public:
         context = new context_t<>(device_ids_);
         num_gpus = context->get_num_devices();
 
-        valid = verify_plan(transfer_plan_);
+        transfer_plan = transfer_plan_;
+        if(transfer_plan.empty()) load_default_plan();
+        plan_valid = verify_plan();
     }
 
     all2all_t (
@@ -49,7 +55,9 @@ public:
 
         num_gpus = context->get_num_devices();
 
-        valid = verify_plan(transfer_plan_);
+        transfer_plan = transfer_plan_;
+        if(transfer_plan.empty()) load_default_plan();
+        plan_valid = verify_plan();
     }
 
     ~all2all_t () {
@@ -58,53 +66,48 @@ public:
     }
 
 private:
-    bool verify_plan(const std::vector<std::vector<gpu_id_t> >& transfer_plan_) {
+    void load_default_plan() {
+        transfer_plan.reserve(num_gpus*num_gpus);
 
-        transfer_plan = transfer_plan_;
-
-        if (transfer_plan.empty()) {
-            num_phases = 1;
-            transfer_plan.reserve(num_gpus*num_gpus);
-
-            // prepare direct transfers from src to trg gpu
-            for (gpu_id_t src = 0; src < num_gpus; ++src) {
-                for (gpu_id_t trg = 0; trg < num_gpus; ++trg) {
-                    transfer_plan.emplace_back(std::vector<gpu_id_t>{src,trg});
-                }
+        // plan direct transfers from src to trg gpu
+        for (gpu_id_t src = 0; src < num_gpus; ++src) {
+            for (gpu_id_t trg = 0; trg < num_gpus; ++trg) {
+                transfer_plan.emplace_back(std::vector<gpu_id_t>{src,trg});
             }
         }
-        else {
-            if (transfer_plan.size() != num_gpus*num_gpus)
+    }
+
+    bool verify_plan() {
+        if (transfer_plan.size() != num_gpus*num_gpus)
+            if (throw_exceptions)
+                throw std::invalid_argument(
+                    "number of planned sequences does not match number of gpus.");
+            else return false;
+
+        num_phases = transfer_plan[0].size()-1;
+
+        if (num_phases < 1)
+            if (throw_exceptions)
+                throw std::invalid_argument(
+                    "planned sequence must be at least of length 2.");
+            else return false;
+        for (const auto& sequence : transfer_plan)
+            if (sequence.size() != num_phases+1)
                 if (throw_exceptions)
                     throw std::invalid_argument(
-                        "number of planned sequences does not match number of gpus.");
+                        "planned sequences must have same lengths.");
                 else return false;
-
-            num_phases = transfer_plan[0].size()-1;
-
-            if (num_phases < 1)
-                if (throw_exceptions)
-                    throw std::invalid_argument(
-                        "planned sequence must be at least of length 2.");
-                else return false;
-            for (const auto& sequence : transfer_plan)
-                if (sequence.size() != num_phases+1)
+        std::vector<std::vector<bool> > completeness(num_gpus, std::vector<bool>(num_gpus));
+        for (const auto& sequence : transfer_plan) {
+            completeness[sequence.front()][sequence.back()] = true;
+        }
+        for (gpu_id_t src = 0; src < num_gpus; ++src) {
+            for (gpu_id_t trg = 0; trg < num_gpus; ++trg) {
+                if (!completeness[src][trg])
                     if (throw_exceptions)
                         throw std::invalid_argument(
-                            "planned sequences must have same lengths.");
+                            "transfer_plan is incomplete.");
                     else return false;
-            std::vector<std::vector<bool> > completeness(num_gpus, std::vector<bool>(num_gpus));
-            for (const auto& sequence : transfer_plan) {
-                completeness[sequence.front()][sequence.back()] = true;
-            }
-            for (gpu_id_t src = 0; src < num_gpus; ++src) {
-                for (gpu_id_t trg = 0; trg < num_gpus; ++trg) {
-                    if (!completeness[src][trg])
-                        if (throw_exceptions)
-                            throw std::invalid_argument(
-                                "transfer_plan is incomplete.");
-                        else return false;
-                }
             }
         }
 
@@ -113,7 +116,7 @@ private:
 
 public:
     void show_plan() const {
-        if(!valid)
+        if(!plan_valid)
             std::cout << "invalid plan\n";
 
         std::cout << "Transfer plan:\n";
@@ -299,7 +302,7 @@ public:
         const std::vector<index_t  >& dsts_lens, // dst_len[k] is length of dst[k]
         const std::vector<std::vector<table_t> >& table) const {  // [src_gpu, partition]
 
-        if (!valid) return false;
+        if (!plan_valid) return false;
 
         if (srcs.size() != num_gpus)
             if (throw_exceptions)
