@@ -168,7 +168,7 @@ void run(T1* context,
     for (gpu_id_t gpu = 0; gpu < num_gpus; gpu++) {
         cudaSetDevice(context->get_device_id(gpu));
         validate<<<256, 1024, 0, context->get_streams(gpu)[0]>>>
-            (dsts[gpu], lengths[gpu], context->get_device_id(gpu)+1, part_hash);
+            (dsts[gpu], lengths[gpu], gpu+1, part_hash);
     }
     CUERR
     TIMERSTOP(validate)
