@@ -16,8 +16,8 @@ DGX = $(GEN) \
 
 all: general dgx1v
 
-general: distributed_general.cu distributed.cuh $(HEADERS) $(GEN)
-	$(NVCC) $(NVCCFLAGS) distributed_general.cu -o general
+general: distributed_general.cu distributed.cuh $(HEADERS) $(GEN) include/plan_parser.cpp include/plan_parser.hpp
+	$(NVCC) $(NVCCFLAGS) include/plan_parser.cpp distributed_general.cu -o general
 
 dgx1v: distributed_dgx1v.cu distributed.cuh $(HEADERS) $(DGX)
 	$(NVCC) $(NVCCFLAGS) distributed_dgx1v.cu -o dgx1v
