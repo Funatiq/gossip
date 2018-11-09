@@ -1,45 +1,79 @@
 #pragma once
 
+#include <numeric>
+
 template <
-    uint64_t num_gpus,
-    uint64_t throw_exceptions=true,
+    bool throw_exceptions=true,
     uint64_t PEER_STATUS_SLOW=0,
     uint64_t PEER_STATUS_DIAG=1,
     uint64_t PEER_STATUS_FAST=2>
 class context_t {
 
-    cudaStream_t * streams;
-    uint64_t * device_ids;
-    uint64_t peer_status[num_gpus][num_gpus];
+    gpu_id_t num_gpus;
+    std::vector<gpu_id_t> device_ids;
+    std::vector<std::vector<cudaStream_t>> streams;
+    std::vector<std::vector<uint64_t>> peer_status;
+    bool valid = true;
 
 public:
 
-    context_t (uint64_t * device_ids_=0) {
+    context_t (const gpu_id_t num_gpus_) {
 
-        // copy num_gpus many device identifiers
-        device_ids = new uint64_t[num_gpus];
-        for (uint64_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu)
-            device_ids[src_gpu] = device_ids_ ?
-                                  device_ids_[src_gpu] : src_gpu;
+        if(num_gpus_ < 1) {
+            valid = false;
+            if (throw_exceptions)
+                throw std::invalid_argument(
+                    "Invalid number of devices.");
+        }
 
+        num_gpus = num_gpus_;
+
+        device_ids.resize(num_gpus);
+        std::iota(device_ids.begin(), device_ids.end(), 0);
+
+        initialize();
+    }
+
+    context_t (const std::vector<gpu_id_t>& device_ids_) {
+
+        if(device_ids_.empty()) {
+            valid = false;
+            if (throw_exceptions)
+                throw std::invalid_argument(
+                    "Invalid number of device ids.");
+        }
+
+        num_gpus = device_ids_.size();  
+        
+        device_ids = device_ids_;
+
+        initialize();
+    }
+
+private:
+    void initialize() {
+        if(!valid) return;
+
+        streams.resize(num_gpus, std::vector<cudaStream_t>(num_gpus));
+        
         // create num_gpus^2 streams where streams[gpu*num_gpus+part]
         // denotes the stream to be used for GPU gpu and partition part
-        streams = new cudaStream_t[num_gpus*num_gpus];
-        for (uint64_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
+        for (gpu_id_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
             cudaSetDevice(get_device_id(src_gpu));
             cudaDeviceSynchronize();
-            for (uint64_t part = 0; part < num_gpus; ++part) {
-                cudaStreamCreate(get_streams(src_gpu)+part);
+            for (gpu_id_t part = 0; part < num_gpus; ++part) {
+                cudaStreamCreate(&streams[src_gpu][part]);
             }
         } CUERR
 
+        peer_status.resize(num_gpus, std::vector<uint64_t>(num_gpus));
 
         // compute the connectivity matrix
-        for (uint64_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
-            const uint64_t src = get_device_id(src_gpu);
+        for (gpu_id_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
+            const gpu_id_t src = get_device_id(src_gpu);
             cudaSetDevice(src);
-            for (uint64_t dst_gpu = 0; dst_gpu < num_gpus; ++dst_gpu) {
-                const uint64_t dst = get_device_id(dst_gpu);
+            for (gpu_id_t dst_gpu = 0; dst_gpu < num_gpus; ++dst_gpu) {
+                const gpu_id_t dst = get_device_id(dst_gpu);
 
                 // check if src can access dst
                 if (src == dst) {
@@ -54,17 +88,15 @@ public:
             }
         } CUERR
 
-        for (uint64_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
-            const uint64_t src = get_device_id(src_gpu);
+        for (gpu_id_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
+            const gpu_id_t src = get_device_id(src_gpu);
             cudaSetDevice(src);
-            for (uint64_t dst_gpu = 0; dst_gpu < num_gpus; ++dst_gpu) {
-                const uint64_t dst = get_device_id(dst_gpu);
+            for (gpu_id_t dst_gpu = 0; dst_gpu < num_gpus; ++dst_gpu) {
+                const gpu_id_t dst = get_device_id(dst_gpu);
 
                 if (src_gpu != dst_gpu) {
-                    if (throw_exceptions)
-                        if (src == dst)
-                            throw std::invalid_argument(
-                                "Device identifiers are not unique.");
+                    std::cout << "WARNING: device identifiers are not unique."
+                              << std::endl;
                 }
 
                 if (peer_status[src_gpu][dst_gpu] == PEER_STATUS_FAST) {
@@ -88,25 +120,28 @@ public:
             }
         } CUERR
     }
-
+    
+public:
     ~context_t () {
 
+        if(!valid) return;
+
         // synchronize and destroy streams
-        for (uint64_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
+        for (gpu_id_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
             cudaSetDevice(get_device_id(src_gpu));
             cudaDeviceSynchronize();
-            for (uint64_t part = 0; part < num_gpus; ++part) {
+            for (gpu_id_t part = 0; part < num_gpus; ++part) {
                 cudaStreamSynchronize(get_streams(src_gpu)[part]);
-                cudaStreamDestroy(get_streams(src_gpu)[part]);
+                cudaStreamDestroy(streams[src_gpu][part]);
             }
         } CUERR
 
         // disable peer access
-        for (uint64_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
-            const uint64_t src = get_device_id(src_gpu);
+        for (gpu_id_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
+            const gpu_id_t src = get_device_id(src_gpu);
             cudaSetDevice(src);
-            for (uint64_t dst_gpu = 0; dst_gpu < num_gpus; ++dst_gpu) {
-                const uint64_t dst = get_device_id(dst_gpu);
+            for (gpu_id_t dst_gpu = 0; dst_gpu < num_gpus; ++dst_gpu) {
+                const gpu_id_t dst = get_device_id(dst_gpu);
 
                 if (peer_status[src_gpu][dst_gpu] == PEER_STATUS_FAST) {
                     cudaDeviceDisablePeerAccess(dst);
@@ -127,60 +162,55 @@ public:
                 }
             }
         } CUERR
-
-        // free streams and device identifiers
-        delete [] streams;
-        delete [] device_ids;
     }
 
-    uint64_t get_device_id (const uint64_t gpu) const noexcept {
+    // return the number of devices belonging to context
+    gpu_id_t get_num_devices () const noexcept {
+        return num_gpus;
+    }
 
-        // return the actual device identifier of GPU gpu
+    // return the actual device identifier of specified GPU
+    gpu_id_t get_device_id (const gpu_id_t gpu) const noexcept {
         return device_ids[gpu];
     }
 
-    cudaStream_t * get_streams (const uint64_t gpu) const noexcept {
-
-        // return pointer to all num_gpus many streams of GPU gpu
-        return streams+gpu*num_gpus;
+    // return vector of streams associated with to specified GPU
+    const std::vector<cudaStream_t>& get_streams (const gpu_id_t gpu) const noexcept {
+        return streams[gpu];
     }
 
-    void sync_gpu_streams (const uint64_t gpu) const noexcept {
-
-        // sync all streams associated with the corresponding GPU
+    // sync all streams associated with the specified GPU
+    void sync_gpu_streams (const gpu_id_t gpu) const noexcept {
         cudaSetDevice(get_device_id(gpu)); CUERR
-        for (uint64_t part = 0; part < num_gpus; ++part)
+        for (gpu_id_t part = 0; part < num_gpus; ++part)
             cudaStreamSynchronize(get_streams(gpu)[part]);
         CUERR
     }
 
+    // sync all streams of the context
     void sync_all_streams () const noexcept {
-
-        // sync all streams of the context
-        for (uint64_t gpu = 0; gpu < num_gpus; ++gpu)
+        for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu)
             sync_gpu_streams(gpu);
         CUERR
     }
 
+    // sync all GPUs
     void sync_hard () const noexcept {
-
-        // sync all GPUs
-        for (uint64_t gpu = 0; gpu < num_gpus; ++gpu) {
+        for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
             cudaSetDevice(get_device_id(gpu));
             cudaDeviceSynchronize();
         } CUERR
     }
 
+    // check if both streams and device identifiers are created
     bool is_valid () const noexcept {
-
-        // both streams and device identifiers are created
-        return streams && device_ids;
+        return !streams.empty() && !device_ids.empty();
     }
 
     void print_connectivity_matrix () const {
         std::cout << "STATUS: connectivity matrix:" << std::endl;
-        for (uint64_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu)
-            for (uint64_t dst_gpu = 0; dst_gpu < num_gpus; ++dst_gpu)
+        for (gpu_id_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu)
+            for (gpu_id_t dst_gpu = 0; dst_gpu < num_gpus; ++dst_gpu)
                 std::cout << (dst_gpu == 0 ? "STATUS: |" : "")
                           << uint64_t(peer_status[src_gpu][dst_gpu])
                           << (dst_gpu+1 == num_gpus ? "|\n" : " ");

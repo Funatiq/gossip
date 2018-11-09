@@ -8,17 +8,18 @@ HEADERS = include/gossip.cuh \
 		  include/gossip/multisplit.cuh \
 		  include/gossip/point_to_point.cuh
 
-DGX = include/gossip/all_to_all_dgx1v.cuh
 GEN = include/gossip/all_to_all.cuh
+DGX = $(GEN) \
+      include/gossip/all_to_all_dgx1v.cuh
 
 .PHONY: all clean
 
 all: general dgx1v
 
-general: distributed_general.cu $(HEADERS) $(GEN)
+general: distributed_general.cu distributed.cuh $(HEADERS) $(GEN)
 	$(NVCC) $(NVCCFLAGS) distributed_general.cu -o general
 
-dgx1v: distributed_dgx1v.cu $(HEADERS) $(DGX)
+dgx1v: distributed_dgx1v.cu distributed.cuh $(HEADERS) $(DGX)
 	$(NVCC) $(NVCCFLAGS) distributed_dgx1v.cu -o dgx1v
 
 clean:

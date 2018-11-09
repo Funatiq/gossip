@@ -4,9 +4,12 @@
 #include <random>
 #include <cstring>
 #include <stdexcept>
+#include <array>
+#include <vector>
 #include "cudahelpers/cuda_helpers.cuh"
 
 namespace gossip {
+    using gpu_id_t = uint8_t;
 
     #include "gossip/context.cuh"
     #include "gossip/auxiliary.cuh"

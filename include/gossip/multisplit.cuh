@@ -28,35 +28,40 @@ void binary_split(
 }
 
 template <
-    uint64_t num_gpus,
-    uint64_t throw_exceptions=true,
+    bool throw_exceptions=true,
     typename cnter_t=uint32_t>
 class multisplit_t {
 
-    context_t<num_gpus> * context;
+    gpu_id_t num_gpus;
+    context_t<> * context;
     bool external_context;
-    cnter_t * counters_device[num_gpus];
-    cnter_t * counters_host[num_gpus];
+    std::vector<cnter_t *> counters_device;
+    std::vector<cnter_t *> counters_host;
 
 public:
 
     multisplit_t (
-        uint64_t * device_ids_=0) : external_context (false) {
+        const gpu_id_t num_gpus_)
+        : external_context (false) {
 
-        if (device_ids_)
-            context = new context_t<num_gpus>(device_ids_);
-        else
-            context = new context_t<num_gpus>();
+        context = new context_t<>(num_gpus_);
+        num_gpus = context->get_num_devices();
 
-        for (uint64_t gpu = 0; gpu < num_gpus; ++gpu) {
-            cudaSetDevice(context->get_device_id(gpu));
-            cudaMalloc(&counters_device[gpu], sizeof(cnter_t));
-            cudaMallocHost(&counters_host[gpu], sizeof(cnter_t)*num_gpus);
-        } CUERR
+        initialize();
     }
 
     multisplit_t (
-        context_t<num_gpus> * context_) : context(context_),
+        const std::vector<gpu_id_t>& device_ids_)
+        : external_context (false) {
+
+        context = new context_t<>(device_ids_);
+        num_gpus = context->get_num_devices();
+
+        initialize();
+    }
+
+    multisplit_t (
+        context_t<> * context_) : context(context_),
                                           external_context (true) {
         if (throw_exceptions)
             if (!context->is_valid())
@@ -64,16 +69,28 @@ public:
                     "You have to pass a valid context!"
                 );
 
-        for (uint64_t gpu = 0; gpu < num_gpus; ++gpu) {
-            cudaSetDevice(context->get_device_id(gpu)); 
+        num_gpus = context->get_num_devices();
+
+        initialize();
+    }
+
+private:
+    void initialize() {
+        counters_device.resize(num_gpus);
+        counters_host.resize(num_gpus);
+
+        for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
+            cudaSetDevice(context->get_device_id(gpu));
             cudaMalloc(&counters_device[gpu], sizeof(cnter_t));
             cudaMallocHost(&counters_host[gpu], sizeof(cnter_t)*num_gpus);
         } CUERR
     }
 
+
+public:
     ~multisplit_t () {
 
-        for (uint64_t gpu = 0; gpu < num_gpus; ++gpu) {
+        for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
             cudaSetDevice(context->get_device_id(gpu));
             cudaFreeHost(counters_host[gpu]);
             cudaFree(counters_device[gpu]);
@@ -89,14 +106,46 @@ public:
         typename table_t,
         typename funct_t>
     bool execAsync (
-        value_t * srcs[num_gpus],
-        index_t   srcs_lens[num_gpus],
-        value_t * dsts[num_gpus],
-        index_t   dsts_lens[num_gpus],
-        table_t   table[num_gpus][num_gpus],
-        funct_t   functor) const noexcept {
+        const std::vector<value_t *>& srcs,
+        const std::vector<index_t  >& srcs_lens,
+        const std::vector<value_t *>& dsts,
+        const std::vector<index_t  >& dsts_lens,
+        std::vector<std::vector<table_t> >& table,
+        funct_t functor) const {
 
-        for (uint64_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
+        if (srcs.size() != num_gpus)
+            if (throw_exceptions)
+                throw std::invalid_argument(
+                    "srcs size does not match number of gpus.");
+            else return false;
+        if (srcs_lens.size() != num_gpus)
+            if (throw_exceptions)
+                throw std::invalid_argument(
+                    "srcs_lens size does not match number of gpus.");
+            else return false;
+        if (dsts.size() != num_gpus)
+            if (throw_exceptions)
+                throw std::invalid_argument(
+                    "dsts size does not match number of gpus.");
+            else return false;
+        if (dsts_lens.size() != num_gpus)
+            if (throw_exceptions)
+                throw std::invalid_argument(
+                    "dsts_lens size does not match number of gpus.");
+            else return false;
+        if (table.size() != num_gpus)
+            if (throw_exceptions)
+                throw std::invalid_argument(
+                    "table size does not match number of gpus.");
+            else return false;
+        for (const auto& t : table)
+            if (t.size() != num_gpus)
+                if (throw_exceptions)
+                    throw std::invalid_argument(
+                        "table size does not match number of gpus.");
+                else return false;
+
+        for (gpu_id_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
             if (srcs_lens[src_gpu] > dsts_lens[src_gpu])
                 if (throw_exceptions)
                     throw std::invalid_argument(
@@ -106,16 +155,16 @@ public:
         }
 
         // initialize the counting atomics with zeroes
-        for (uint64_t gpu = 0; gpu < num_gpus; ++gpu) {
+        for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
             cudaSetDevice(context->get_device_id(gpu));
             cudaMemsetAsync(counters_device[gpu], 0, sizeof(cnter_t),
                             context->get_streams(gpu)[0]);
         } CUERR
 
         // perform warp aggregated compression for each GPU independently
-        for (uint64_t gpu = 0; gpu < num_gpus; ++gpu) {
+        for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
             cudaSetDevice(context->get_device_id(gpu));
-            for (uint64_t part = 0; part < num_gpus; ++part) {
+            for (gpu_id_t part = 0; part < num_gpus; ++part) {
 
                 binary_split<<<256, 1024, 0, context->get_streams(gpu)[0]>>>
                    (srcs[gpu], dsts[gpu], srcs_lens[gpu],
@@ -132,14 +181,14 @@ public:
         sync();
 
         // recover the partition table from accumulated counters
-        for (uint64_t gpu = 0; gpu < num_gpus; ++gpu)
-            for (uint64_t part = 0; part < num_gpus; ++part)
+        for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu)
+            for (gpu_id_t part = 0; part < num_gpus; ++part)
                 table[gpu][part] = part == 0 ? counters_host[gpu][part] :
                                    counters_host[gpu][part] -
                                    counters_host[gpu][part-1];
 
         // reset srcs to zero
-        for (uint64_t gpu = 0; gpu < num_gpus; ++gpu) {
+        for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
             cudaSetDevice(context->get_device_id(gpu));
             cudaMemsetAsync(srcs[gpu], 0, sizeof(value_t)*srcs_lens[gpu],
                             context->get_streams(gpu)[0]);
