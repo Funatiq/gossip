@@ -95,8 +95,9 @@ private:
                 const gpu_id_t dst = get_device_id(dst_gpu);
 
                 if (src_gpu != dst_gpu) {
-                    std::cout << "WARNING: device identifiers are not unique."
-                              << std::endl;
+                    if (src == dst)
+                        std::cout << "WARNING: device identifiers are not unique."
+                                  << std::endl;
                 }
 
                 if (peer_status[src_gpu][dst_gpu] == PEER_STATUS_FAST) {
