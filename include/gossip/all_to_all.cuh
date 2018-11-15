@@ -1,51 +1,95 @@
 #pragma once
 
+#include "transfer_plan.hpp"
+
+namespace gossip {
+
 template<
     bool throw_exceptions=true>
 class all2all_t {
 
 protected:
-    gpu_id_t num_gpus;
     context_t<> * context;
+    gpu_id_t num_gpus;
 private:
     bool external_context;
 
-    size_t num_phases;
-    std::vector<std::vector<gpu_id_t> > transfer_plan;
-    
-    bool plan_valid = true;
+    const transfer_plan_t<gpu_id_t> transfer_plan;
+
+    bool plan_valid;
 
 public:
     all2all_t (
-        const gpu_id_t num_gpus_,
-        const std::vector<std::vector<gpu_id_t> >& transfer_plan_ = {})
-        : external_context (false)
+        const gpu_id_t num_gpus_)
+        : external_context (false),
+          transfer_plan(num_gpus_)
     {
         context = new context_t<>(num_gpus_);
         num_gpus = context->get_num_devices();
 
-        transfer_plan = transfer_plan_;
-        if(transfer_plan.empty()) load_default_plan();
-        plan_valid = verify_plan();
+        plan_valid = transfer_plan.is_valid();
     }
 
     all2all_t (
-        const std::vector<gpu_id_t>& device_ids_,
-        const std::vector<std::vector<gpu_id_t> >& transfer_plan_ = {})
-        : external_context (false)
+        const gpu_id_t num_gpus_,
+        const transfer_plan_t<gpu_id_t>& transfer_plan_)
+        : external_context (false),
+          transfer_plan(transfer_plan_)
+    {
+        context = new context_t<>(num_gpus_);
+        num_gpus = context->get_num_devices();
+
+        plan_valid = (num_gpus == transfer_plan.get_num_gpus()) &&
+                     transfer_plan.is_valid();
+    }
+
+    all2all_t (
+        const std::vector<gpu_id_t>& device_ids_)
+        : external_context (false),
+          transfer_plan(device_ids_.size())
     {
         context = new context_t<>(device_ids_);
         num_gpus = context->get_num_devices();
 
-        transfer_plan = transfer_plan_;
-        if(transfer_plan.empty()) load_default_plan();
-        plan_valid = verify_plan();
+        plan_valid = transfer_plan.is_valid();
+    }
+
+    all2all_t (
+        const std::vector<gpu_id_t>& device_ids_,
+        const transfer_plan_t<gpu_id_t>& transfer_plan_)
+        : external_context (false),
+          transfer_plan(transfer_plan_)
+    {
+        context = new context_t<>(device_ids_);
+        num_gpus = context->get_num_devices();
+
+        plan_valid = (num_gpus == transfer_plan.get_num_gpus()) &&
+                     transfer_plan.is_valid();
+    }
+
+     all2all_t (
+        context_t<> * context_)
+        : context(context_),
+          num_gpus(context->get_num_devices()),
+          external_context (true),
+          transfer_plan(num_gpus)
+    {
+        if (throw_exceptions)
+            if (!context->is_valid())
+                throw std::invalid_argument(
+                    "You have to pass a valid context!"
+                );
+ 
+        plan_valid = transfer_plan.is_valid();
     }
 
     all2all_t (
         context_t<> * context_,
-        const std::vector<std::vector<gpu_id_t> >& transfer_plan_ = {})
-        : context(context_), external_context (true)
+        const transfer_plan_t<gpu_id_t>& transfer_plan_)
+        : context(context_),
+          num_gpus(context->get_num_devices()),
+          external_context (true),
+          transfer_plan(transfer_plan_)
     {
         if (throw_exceptions)
             if (!context->is_valid())
@@ -53,11 +97,8 @@ public:
                     "You have to pass a valid context!"
                 );
 
-        num_gpus = context->get_num_devices();
-
-        transfer_plan = transfer_plan_;
-        if(transfer_plan.empty()) load_default_plan();
-        plan_valid = verify_plan();
+        plan_valid = (num_gpus == transfer_plan.get_num_gpus()) &&
+                     transfer_plan.is_valid();
     }
 
     ~all2all_t () {
@@ -65,67 +106,12 @@ public:
             delete context;
     }
 
-private:
-    void load_default_plan() {
-        transfer_plan.reserve(num_gpus*num_gpus);
-
-        // plan direct transfers from src to trg gpu
-        for (gpu_id_t src = 0; src < num_gpus; ++src) {
-            for (gpu_id_t trg = 0; trg < num_gpus; ++trg) {
-                transfer_plan.emplace_back(std::vector<gpu_id_t>{src,trg});
-            }
-        }
-    }
-
-    bool verify_plan() {
-        if (transfer_plan.size() != num_gpus*num_gpus)
-            if (throw_exceptions)
-                throw std::invalid_argument(
-                    "number of planned sequences does not match number of gpus.");
-            else return false;
-
-        num_phases = transfer_plan[0].size()-1;
-
-        if (num_phases < 1)
-            if (throw_exceptions)
-                throw std::invalid_argument(
-                    "planned sequence must be at least of length 2.");
-            else return false;
-        for (const auto& sequence : transfer_plan)
-            if (sequence.size() != num_phases+1)
-                if (throw_exceptions)
-                    throw std::invalid_argument(
-                        "planned sequences must have same lengths.");
-                else return false;
-        std::vector<std::vector<bool> > completeness(num_gpus, std::vector<bool>(num_gpus));
-        for (const auto& sequence : transfer_plan) {
-            completeness[sequence.front()][sequence.back()] = true;
-        }
-        for (gpu_id_t src = 0; src < num_gpus; ++src) {
-            for (gpu_id_t trg = 0; trg < num_gpus; ++trg) {
-                if (!completeness[src][trg])
-                    if (throw_exceptions)
-                        throw std::invalid_argument(
-                            "transfer_plan is incomplete.");
-                    else return false;
-            }
-        }
-
-        return true;
-    }
-
 public:
     void show_plan() const {
         if(!plan_valid)
-            std::cout << "invalid plan\n";
+            std::cout << "WARNING: plan does fit number of gpus\n";
 
-        std::cout << "Transfer plan:\n";
-        for(const auto& sequence : transfer_plan) {
-            for(const auto& item : sequence)
-                std::cout << int(item) << ' ';
-            std::cout << '\n';
-        }
-        std::cout << std::endl;
+        transfer_plan.show_plan();
     }
 
 private:
@@ -336,10 +322,12 @@ public:
                         "table size does not match number of gpus.");
                 else return false;
 
+        auto num_phases = transfer_plan.get_num_steps();
+
         transfer_handler<table_t> transfers(num_gpus, num_phases, table);
 
         // prepare transfers according to transfer_plan
-        for (const auto& sequence : transfer_plan) {
+        for (const auto& sequence : transfer_plan.get_transfer_sequences()) {
             transfers.push_back(sequence);
         }
 
@@ -380,3 +368,5 @@ public:
         context->sync_hard();
     }
 };
+
+} // namespace

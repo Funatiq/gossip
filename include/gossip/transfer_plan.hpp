@@ -3,6 +3,8 @@
 #include <vector>
 #include <iostream>
 
+namespace gossip {
+
 template<
     typename gpu_id_t,
     bool throw_exceptions=true>
@@ -27,6 +29,7 @@ public:
                       valid(false)
     {
         if(transfer_sequences.empty()) load_default_plan();
+        num_steps = transfer_sequences[0].size()-1;
         valid = verify_plan();
     }
 
@@ -41,6 +44,7 @@ public:
                       valid(false)
     {
         if(transfer_sequences.empty()) load_default_plan();
+        num_steps = transfer_sequences[0].size()-1;
         valid = verify_plan();
     }
 
@@ -60,8 +64,6 @@ private:
     }
 
     bool verify_plan() {
-        num_steps = transfer_sequences[0].size()-1;
-
         if (num_steps < 1)
             if (throw_exceptions)
                 throw std::invalid_argument(
@@ -134,8 +136,8 @@ public:
         if(!valid)
             std::cout << "WARNING: invalid plan\n";
 
-        std::cout << "Transfer plan for " << num_gpus << " gpus\n";
-        std::cout << "Transfer " << num_chunks << "chunks in " << num_steps << " steps:\n";
+        std::cout << "Transfer plan for " << int(num_gpus) << " gpus\n";
+        std::cout << "Transfer " << num_chunks << " chunks in " << num_steps << " steps:\n";
 
         for (size_t i = 0; i < transfer_sequences.size(); ++i) {
             std::cout << "\tTransfer "
@@ -149,3 +151,5 @@ public:
     }
 
 };
+
+} // namespace

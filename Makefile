@@ -6,7 +6,8 @@ HEADERS = include/gossip.cuh \
 		  include/gossip/context.cuh \
 		  include/gossip/memory_manager.cuh \
 		  include/gossip/multisplit.cuh \
-		  include/gossip/point_to_point.cuh
+		  include/gossip/point_to_point.cuh \
+		  include/gossip/transfer_plan.hpp
 
 GEN = include/gossip/all_to_all.cuh
 DGX = $(GEN) \

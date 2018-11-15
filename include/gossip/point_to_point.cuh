@@ -1,5 +1,7 @@
 #pragma once
 
+namespace gossip {
+
 template <
     bool throw_exceptions=true>
 class point2point_t {
@@ -120,3 +122,5 @@ public:
         context->sync_hard();
     }
 };
+
+} // namespace

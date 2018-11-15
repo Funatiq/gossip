@@ -63,11 +63,14 @@ void run(T1* context,
     std::vector<data_t *> ying(num_gpus);
     std::vector<data_t *> yang(num_gpus);
 
+    TIMERSTART(malloc_devices)
     for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
         cudaSetDevice(context->get_device_id(gpu));
         cudaMalloc(&ying[gpu], sizeof(data_t)*batch_size_secure);
         cudaMalloc(&yang[gpu], sizeof(data_t)*batch_size_secure);
     } CUERR
+    context->sync_hard();
+    TIMERSTOP(malloc_devices)
 
     context->sync_all_streams();
     TIMERSTART(zero_gpu_buffers)

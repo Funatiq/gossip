@@ -2,6 +2,8 @@
 
 #include <numeric>
 
+namespace gossip {
+
 template <
     bool throw_exceptions=true,
     uint64_t PEER_STATUS_SLOW=0,
@@ -217,3 +219,5 @@ public:
                           << (dst_gpu+1 == num_gpus ? "|\n" : " ");
     }
 };
+
+} // namespace

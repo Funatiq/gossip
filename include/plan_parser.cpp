@@ -7,7 +7,7 @@
 #include "json.hpp"
 using json = nlohmann::json;
 
-transfer_plan_t<gpu_id_t>
+gossip::transfer_plan_t<gpu_id_t>
 parse_plan(const char* filename) {
     std::ifstream ifs(filename);
     json json_plan;
@@ -49,8 +49,8 @@ parse_plan(const char* filename) {
         }
 
     if(num_chunks > 0)
-        return transfer_plan_t<gpu_id_t>{num_gpus, transfer_sequences, num_chunks, transfer_sizes};
+        return gossip::transfer_plan_t<gpu_id_t>{num_gpus, transfer_sequences, num_chunks, transfer_sizes};
     else
-        return transfer_plan_t<gpu_id_t>{num_gpus, transfer_sequences};
+        return gossip::transfer_plan_t<gpu_id_t>{num_gpus, transfer_sequences};
 }
 

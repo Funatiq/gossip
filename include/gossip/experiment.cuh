@@ -1,5 +1,7 @@
 #pragma once
 
+namespace gossip {
+
 template <
     bool throw_exceptions=true>
 class experiment_t {
@@ -133,3 +135,5 @@ public:
         return true;
     }
 };
+
+} // namespace

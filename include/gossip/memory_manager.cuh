@@ -1,5 +1,7 @@
 #pragma once
 
+namespace gossip {
+
 template<
     bool throw_exceptions=true>
 class memory_manager_t {
@@ -140,3 +142,5 @@ public:
         return true;
     }
 };
+
+} // namespace

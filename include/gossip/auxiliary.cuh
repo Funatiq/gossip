@@ -1,5 +1,7 @@
 #pragma once
 
+namespace gossip {
+
 template <
     gpu_id_t num_gpus>
 struct part_hash {
@@ -27,3 +29,5 @@ index_t atomicAggInc(
     return res + __popc(mask & ((1 << lane) -1));
 }
 */
+
+} // namespace

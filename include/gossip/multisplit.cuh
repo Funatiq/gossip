@@ -1,5 +1,7 @@
 #pragma once
 
+namespace gossip {
+
 template <
     typename value_t,
     typename index_t,
@@ -205,3 +207,5 @@ public:
         context->sync_hard();
     }
 };
+
+} // namespace
