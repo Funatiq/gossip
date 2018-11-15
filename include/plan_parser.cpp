@@ -11,7 +11,12 @@ bool parse_plan(const char* filename,
                 std::vector<std::vector<gpu_id_t>>& transfer_plan) {
     std::ifstream ifs(filename);
     json json_plan;
-    ifs >> json_plan;
+    if(ifs.good())
+        ifs >> json_plan;
+    else {
+        std::cerr << "error reading " << filename << std::endl;
+        return false;
+    }
 
     // get plan from json
     num_gpus = json_plan["num_gpus"];

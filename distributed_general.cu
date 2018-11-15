@@ -19,20 +19,21 @@ int main () {
 
     gpu_id_t num_gpus = 0;
     std::vector<std::vector<gpu_id_t>> transfer_plan{};
-    parse_plan("plan.json", num_gpus, transfer_plan);
-    // show_plan(transfer_plan);
+    if(parse_plan("plan.json", num_gpus, transfer_plan)) {
+        // show_plan(transfer_plan);
 
-    auto context = new gossip::context_t<>(num_gpus);
-    auto all2all = new gossip::all2all_t<>(context, transfer_plan);
-    auto multisplit = new gossip::multisplit_t<>(context);
-    auto point2point = new gossip::point2point_t<>(context);
+        auto context = new gossip::context_t<>(num_gpus);
+        auto all2all = new gossip::all2all_t<>(context, transfer_plan);
+        auto multisplit = new gossip::multisplit_t<>(context);
+        auto point2point = new gossip::point2point_t<>(context);
 
-    run<data_t>(context, all2all, multisplit, point2point,
-                batch_size, batch_size_secure);
+        run<data_t>(context, all2all, multisplit, point2point,
+            batch_size, batch_size_secure);
 
-    context->sync_hard();
-    delete all2all;
-    delete multisplit;
-    delete point2point;
-    delete context;
+        context->sync_hard();
+        delete all2all;
+        delete multisplit;
+        delete point2point;
+        delete context;
+    }
 }
