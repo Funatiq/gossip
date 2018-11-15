@@ -2,13 +2,13 @@
 #include <fstream>
 #include <vector>
 
+#include "gossip/transfer_plan.hpp"
 #include "plan_parser.hpp"
 #include "json.hpp"
 using json = nlohmann::json;
 
-bool parse_plan(const char* filename,
-                gpu_id_t& num_gpus,
-                std::vector<std::vector<gpu_id_t>>& transfer_plan) {
+transfer_plan_t<gpu_id_t>
+parse_plan(const char* filename) {
     std::ifstream ifs(filename);
     json json_plan;
     if(ifs.good())
@@ -19,55 +19,38 @@ bool parse_plan(const char* filename,
     }
 
     // get plan from json
-    num_gpus = json_plan["num_gpus"];
-    size_t num_steps = json_plan["num_steps"];
+    gpu_id_t num_gpus = 0;
+    auto it = json_plan.find("num_gpus");
+    if(it != json_plan.end())
+        num_gpus = *it;
 
-    for(const auto& seq : json_plan["plan"]) {
-        transfer_plan.push_back(seq);
-    }
+    size_t num_steps = 0;
+    it = json_plan.find("num_steps");
+    if(it != json_plan.end())
+        num_steps = *it;
 
-    // check plan
-    if (num_gpus < 2) {
-        std::cerr << "plan loaded from " << filename << " has invalid number of gpus.";
-        return false;   
-    }
-    if (num_steps < 1) {
-        std::cerr << "plan loaded from " << filename << " has invalid number of phases.";
-        return false;   
-    }
-    if(transfer_plan.size() != num_gpus*num_gpus) {
-        std::cerr << "plan loaded from " << filename << " has invalid length.";
-        return false;   
-    }
-    for (const auto& sequence : transfer_plan)
-        if (sequence.size() != num_steps+1) {
-            std::cerr << "plan loaded from " << filename << " has invalid sequence.";
-            return false;   
+    size_t num_chunks = 0;
+    it = json_plan.find("num_chunks");
+    if(it != json_plan.end())
+        num_chunks = *it;
+
+    std::vector<std::vector<gpu_id_t>> transfer_sequences = {};
+    it = json_plan.find("plan");
+    if(it != json_plan.end())
+        for(const auto& seq : *it) {
+            transfer_sequences.push_back(seq);
         }
-            
-    std::vector<std::vector<bool> > completeness(num_gpus, std::vector<bool>(num_gpus));
-    for (const auto& sequence : transfer_plan) {
-        completeness[sequence.front()][sequence.back()] = true;
-    }
-    for (gpu_id_t src = 0; src < num_gpus; ++src) {
-        for (gpu_id_t trg = 0; trg < num_gpus; ++trg) {
-            if (!completeness[src][trg]) {
-                std::cerr << "plan loaded from " << filename << " has is incomplete.";
-                return false;   
-            }
+
+    std::vector<size_t> transfer_sizes = {};
+    it = json_plan.find("counts");
+    if(it != json_plan.end())
+        for(const auto& seq : *it) {
+            transfer_sizes.push_back(seq);
         }
-    }
 
-    return true;
-}
-
-void show_plan(std::vector<std::vector<gpu_id_t>>& transfer_plan) {
-    std::cout << "Transfer plan:\n";
-    for(const auto& sequence : transfer_plan) {
-        for(const auto& item : sequence)
-            std::cout << int(item) << ' ';
-        std::cout << '\n';
-    }
-    std::cout << std::endl;
+    if(num_chunks > 0)
+        return transfer_plan_t<gpu_id_t>{num_gpus, transfer_sequences, num_chunks, transfer_sizes};
+    else
+        return transfer_plan_t<gpu_id_t>{num_gpus, transfer_sequences};
 }
 

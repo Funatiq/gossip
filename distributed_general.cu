@@ -18,12 +18,13 @@ int main () {
     uint64_t batch_size_secure = batch_size * security_factor;
 
     gpu_id_t num_gpus = 0;
-    std::vector<std::vector<gpu_id_t>> transfer_plan{};
-    if(parse_plan("plan.json", num_gpus, transfer_plan)) {
+
+    auto transfer_plan = parse_plan("plan.json");
+    if(transfer_plan.is_valid()) {
         // show_plan(transfer_plan);
 
         auto context = new gossip::context_t<>(num_gpus);
-        auto all2all = new gossip::all2all_t<>(context, transfer_plan);
+        auto all2all = new gossip::all2all_t<>(context, transfer_plan.get_transfer_sequences());
         auto multisplit = new gossip::multisplit_t<>(context);
         auto point2point = new gossip::point2point_t<>(context);
 
