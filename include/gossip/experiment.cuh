@@ -1,5 +1,9 @@
 #pragma once
 
+#include <random>
+
+#include "config.h"
+
 namespace gossip {
 
 template <

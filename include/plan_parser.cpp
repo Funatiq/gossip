@@ -2,12 +2,14 @@
 #include <fstream>
 #include <vector>
 
-#include "gossip/transfer_plan.hpp"
+#include "gossip/all_to_all_plan.hpp"
 #include "plan_parser.hpp"
 #include "json.hpp"
 using json = nlohmann::json;
 
-gossip::transfer_plan_t<gpu_id_t>
+using gpu_id_t = gossip::gpu_id_t;
+
+gossip::all2all_plan_t<>
 parse_plan(const char* filename) {
     std::ifstream ifs(filename);
     json json_plan;
@@ -49,8 +51,8 @@ parse_plan(const char* filename) {
         }
 
     if(num_chunks > 0)
-        return gossip::transfer_plan_t<gpu_id_t>{num_gpus, transfer_sequences, num_chunks, transfer_sizes};
+        return gossip::all2all_plan_t<>{num_gpus, transfer_sequences, num_chunks, transfer_sizes};
     else
-        return gossip::transfer_plan_t<gpu_id_t>{num_gpus, transfer_sequences};
+        return gossip::all2all_plan_t<>{num_gpus, transfer_sequences};
 }
 

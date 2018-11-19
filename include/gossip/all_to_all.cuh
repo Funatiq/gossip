@@ -1,6 +1,7 @@
 #pragma once
 
-#include "transfer_plan.hpp"
+#include "config.h"
+#include "all_to_all_plan.hpp"
 
 namespace gossip {
 
@@ -14,7 +15,7 @@ protected:
 private:
     bool external_context;
 
-    const transfer_plan_t<gpu_id_t> transfer_plan;
+    const all2all_plan_t<> transfer_plan;
 
     bool plan_valid;
 
@@ -32,7 +33,7 @@ public:
 
     all2all_t (
         const gpu_id_t num_gpus_,
-        const transfer_plan_t<gpu_id_t>& transfer_plan_)
+        const all2all_plan_t<>& transfer_plan_)
         : external_context (false),
           transfer_plan(transfer_plan_)
     {
@@ -56,7 +57,7 @@ public:
 
     all2all_t (
         const std::vector<gpu_id_t>& device_ids_,
-        const transfer_plan_t<gpu_id_t>& transfer_plan_)
+        const all2all_plan_t<>& transfer_plan_)
         : external_context (false),
           transfer_plan(transfer_plan_)
     {
@@ -85,7 +86,7 @@ public:
 
     all2all_t (
         context_t<> * context_,
-        const transfer_plan_t<gpu_id_t>& transfer_plan_)
+        const all2all_plan_t<>& transfer_plan_)
         : context(context_),
           num_gpus(context->get_num_devices()),
           external_context (true),

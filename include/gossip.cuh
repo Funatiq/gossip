@@ -1,17 +1,11 @@
 # pragma once
 
 #include <cstdint>
-#include <random>
-#include <cstring>
 #include <stdexcept>
-#include <array>
-#include <vector>
+
 #include "cudahelpers/cuda_helpers.cuh"
 
-namespace gossip {
-    using gpu_id_t = uint8_t;
-}
-
+#include "gossip/config.h"
 #include "gossip/context.cuh"
 #include "gossip/auxiliary.cuh"
 #include "gossip/all_to_all.cuh"

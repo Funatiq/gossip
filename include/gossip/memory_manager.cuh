@@ -1,5 +1,9 @@
 #pragma once
 
+#include <cstring>
+
+#include "config.h"
+
 namespace gossip {
 
 template<

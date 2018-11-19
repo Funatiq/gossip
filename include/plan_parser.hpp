@@ -2,6 +2,4 @@
 
 #include "gossip/transfer_plan.hpp"
 
-using gpu_id_t = uint8_t;
-
-gossip::transfer_plan_t<gpu_id_t> parse_plan(const char* filename);
+gossip::all2all_plan_t<> parse_plan(const char* filename);

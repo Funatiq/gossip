@@ -10,17 +10,16 @@
 
 int main () {
     using data_t = uint64_t;
-    using gpu_id_t = gossip::gpu_id_t;
 
     double security_factor = 1.5;
 
     uint64_t batch_size = 1UL << 25;
     uint64_t batch_size_secure = batch_size * security_factor;
 
-    // auto transfer_plan = gossip::transfer_plan_t<gpu_id_t>(8);
-    auto transfer_plan = parse_plan("plan.json");
+    auto transfer_plan = gossip::all2all_plan_t<>(2);
+    // auto transfer_plan = parse_plan("plan.json");
 
-    gpu_id_t num_gpus = transfer_plan.get_num_gpus();
+    auto num_gpus = transfer_plan.get_num_gpus();
 
     if(transfer_plan.is_valid()) {
         // show_plan(transfer_plan);

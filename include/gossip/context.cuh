@@ -1,6 +1,9 @@
 #pragma once
 
+#include <vector>
 #include <numeric>
+
+#include "config.h"
 
 namespace gossip {
 
