@@ -16,8 +16,9 @@ int main () {
     uint64_t batch_size = 1UL << 25;
     uint64_t batch_size_secure = batch_size * security_factor;
 
-    auto transfer_plan = gossip::all2all_plan_t<>(2);
-    // auto transfer_plan = parse_plan("plan.json");
+    // auto transfer_plan = gossip::all2all_plan_t<>(2, {{0,0},{0,1},{1,0},{1,1}, {0,0},{0,1},{1,0},{1,1}},
+                                                //   2, {1,1,1,1,1,1,1,1});
+    auto transfer_plan = parse_all2all_plan("plan.json");
 
     auto num_gpus = transfer_plan.get_num_gpus();
 
