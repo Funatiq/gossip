@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 #include "config.h"
 #include "all_to_all_plan.hpp"
 
@@ -138,7 +140,7 @@ private:
 
     template<typename table_t>
     struct transfer_handler {
-        size_t num_gpus;
+        gpu_id_t num_gpus;
         size_t num_phases;
         std::vector<std::vector<transfer> > phases;
         std::vector<std::vector<size_t> > phases_offsets;
@@ -146,15 +148,19 @@ private:
         const std::vector<std::vector<table_t> >& table;
         std::vector<std::vector<table_t> > h_table;
 
-        transfer_handler(const size_t num_gpus_,
+        size_t num_chunks;
+
+        transfer_handler(const gpu_id_t num_gpus_,
                          const size_t num_phases_,
-                         const std::vector<std::vector<table_t>>& table)
+                         const std::vector<std::vector<table_t>>& table,
+                         const size_t num_chunks_ = 1)
                          : num_gpus(num_gpus_),
                            num_phases(num_phases_),
                            phases(num_phases),
                            phases_offsets(num_phases, std::vector<size_t>(num_gpus)),
                            table(table),
-                           h_table(num_gpus, std::vector<table_t>(num_gpus+1)) {
+                           h_table(num_gpus, std::vector<table_t>(num_gpus+1)),
+                           num_chunks(num_chunks_) {
 
             // horizontal scan to get initial offsets
             for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
@@ -164,8 +170,8 @@ private:
             }
         }
 
-        bool push_back(const std::vector<gpu_id_t>& sequence) {
-            const size_t transfer_size = table[sequence.front()][sequence.back()];
+        bool push_back(const std::vector<gpu_id_t>& sequence,
+                       const size_t chunks = 1) {
 
             if (sequence.size() != num_phases+1)
                 if (throw_exceptions)
@@ -173,10 +179,17 @@ private:
                         "sequence size does not match number of phases.");
                 else return false;
 
+            const size_t offset = h_table[sequence.front()][sequence.back()];
+            const size_t size_per_chunk = SDIV(table[sequence.front()][sequence.back()], num_chunks);
+            size_t transfer_size = size_per_chunk * chunks;
+            if (offset + transfer_size > h_table[sequence.front()][sequence.back()+1])
+                transfer_size = h_table[sequence.front()][sequence.back()+1] - offset;
+
             size_t phase = 0;
-            phases[phase].emplace_back(sequence[phase], h_table[sequence.front()][sequence.back()],
+            phases[phase].emplace_back(sequence[phase], offset,
                                        sequence[phase+1], phases_offsets[phase][sequence[phase+1]],
                                        transfer_size);
+            h_table[sequence.front()][sequence.back()] += transfer_size;
 
             for (size_t phase = 1; phase < num_phases; ++phase) {
                 phases[phase].emplace_back(sequence[phase], phases_offsets[phase-1][sequence[phase]],
@@ -324,12 +337,21 @@ public:
                 else return false;
 
         auto num_phases = transfer_plan.get_num_steps();
+        auto num_chunks = transfer_plan.get_num_chunks();
 
-        transfer_handler<table_t> transfers(num_gpus, num_phases, table);
+        transfer_handler<table_t> transfers(num_gpus, num_phases, table, num_chunks);
 
         // prepare transfers according to transfer_plan
-        for (const auto& sequence : transfer_plan.get_transfer_sequences()) {
-            transfers.push_back(sequence);
+        if (num_chunks > 1) {
+            for (size_t i = 0; i < transfer_plan.get_transfer_sequences().size(); ++i) {
+                transfers.push_back(transfer_plan.get_transfer_sequences()[i],
+                                    transfer_plan.get_transfer_sizes()[i]);
+            }
+        }
+        else {
+             for (const auto& sequence : transfer_plan.get_transfer_sequences()) {
+                transfers.push_back(sequence);
+            }
         }
 
         for (size_t p = 0; p < num_phases; ++p) {
