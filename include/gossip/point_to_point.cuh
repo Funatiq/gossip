@@ -73,11 +73,13 @@ public:
             else return false;
 
         for (gpu_id_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
-            cudaSetDevice(context->get_device_id(src_gpu));
-            cudaMemcpyAsync(dsts[src_gpu], srcs[src_gpu],
-                            sizeof(value_t)*lens[src_gpu],
-                            cudaMemcpyDirection,
-                            context->get_streams(src_gpu)[0]);
+            if (lens[src_gpu] > 0) {
+                cudaSetDevice(context->get_device_id(src_gpu));
+                cudaMemcpyAsync(dsts[src_gpu], srcs[src_gpu],
+                                sizeof(value_t)*lens[src_gpu],
+                                cudaMemcpyDirection,
+                                context->get_streams(src_gpu)[0]);
+            }
         } CUERR
 
         return true;

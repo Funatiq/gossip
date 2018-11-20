@@ -18,8 +18,9 @@ int main () {
     auto multisplit = new gossip::multisplit_t<>(context);
     auto point2point = new gossip::point2point_t<>(context);
 
-    run<data_t>(context, all2all, multisplit, point2point,
-                batch_size, batch_size_secure);
+    run_multisplit_all2all<data_t>(
+        context, all2all, multisplit, point2point,
+        batch_size, batch_size_secure);
 
     context->sync_hard();
     delete all2all;

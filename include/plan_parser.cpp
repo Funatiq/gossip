@@ -50,7 +50,7 @@ parse_plan(const char* filename,
             //TODO cut surplus items from seq
         }
 
-    it = json_plan.find("counts");
+    it = json_plan.find("chunks");
     if(it != json_plan.end())
         for(const auto& seq : *it) {
             transfer_sizes.push_back(seq);

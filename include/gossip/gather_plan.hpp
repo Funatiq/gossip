@@ -39,8 +39,27 @@ private:
     void initialize() {
         if(this->num_gpus >= 2) {
             if(this->transfer_sequences.empty()) load_default_plan();
+            this->num_steps = this->transfer_sequences[0].size()-1;
             this->synchronized = false;
+            // trim_plan();
             this->valid = verify_plan();
+        }
+    }
+
+    void trim_plan() {
+        for (auto& sequence : this->transfer_sequences) {
+            // auto seq_len = sequence.size();
+            auto target = gpu_id_t(-1);
+            for (auto it = sequence.rbegin(); it < sequence.rend(); ++it) {
+                // trim trailing -1
+                if(target == gpu_id_t(-1))
+                    target = *it;
+                // trim trailing items == target
+                else if(target != *it) {
+                    sequence.resize((sequence.rend() - it) + 1);
+                    break;
+                }
+            }
         }
     }
 
@@ -58,7 +77,19 @@ private:
     }
 
     bool verify_plan() const override {
+        if (this->num_steps < 1)
+            if (throw_exceptions)
+                throw std::invalid_argument(
+                    "planned sequence must be at least of length 2.");
+            else return false;
 
+        for (const auto& sequence : this->transfer_sequences)
+            if (sequence.size() != this->num_steps+1)
+                if (throw_exceptions)
+                    throw std::invalid_argument(
+                        "planned sequences must have same lengths.");
+                else return false;
+                
         for (const auto& sequence : this->transfer_sequences) {
             if (sequence.back() != target)
                 if (throw_exceptions)
@@ -95,6 +126,10 @@ private:
         return true;
     }
 
+public:
+    gpu_id_t get_main_gpu() const noexcept {
+        return target;
+    }
 };
 
 } // namespace
