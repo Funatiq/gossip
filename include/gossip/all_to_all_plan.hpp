@@ -16,10 +16,7 @@ public:
                    const std::vector<std::vector<gpu_id_t>>& transfer_sequences_ = {})
                    : transfer_plan_t<throw_exceptions>(num_gpus_, transfer_sequences_)
     {
-        if(this->transfer_sequences.empty()) load_default_plan();
-        this->num_steps = this->transfer_sequences[0].size()-1;
-        this->synchronized = true;
-        this->valid = verify_plan();
+        initialize();
     }
 
     all2all_plan_t(const gpu_id_t num_gpus_,
@@ -29,13 +26,19 @@ public:
                    : transfer_plan_t<throw_exceptions>(num_gpus_, transfer_sequences_,
                                                        num_chunks_, transfer_sizes_)
     {
-        if(this->transfer_sequences.empty()) load_default_plan();
-        this->num_steps = this->transfer_sequences[0].size()-1;
-        this->synchronized = true;
-        this->valid = verify_plan();
+        initialize();
     }
 
 private:
+    void initialize() {
+        if(this->num_gpus >= 2) {
+            if(this->transfer_sequences.empty()) load_default_plan();
+            this->num_steps = this->transfer_sequences[0].size()-1;
+            this->synchronized = true;
+            this->valid = verify_plan();
+        }
+    }
+
     void load_default_plan() override {
         this->num_steps = 1;
         this->num_chunks = 1;

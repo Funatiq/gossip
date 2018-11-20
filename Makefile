@@ -1,5 +1,5 @@
 NVCC=nvcc
-NVCCFLAGS=-O3 -std=c++14 -arch=sm_70 --expt-extended-lambda -Xcompiler="-fopenmp"
+NVCCFLAGS=-O3 -std=c++14 -arch=sm_70 --expt-extended-lambda -Xcompiler="-fopenmp" -Wreorder
 
 HEADERS = include/gossip.cuh \
 		  include/gossip/auxiliary.cuh \
@@ -7,7 +7,10 @@ HEADERS = include/gossip.cuh \
 		  include/gossip/memory_manager.cuh \
 		  include/gossip/multisplit.cuh \
 		  include/gossip/point_to_point.cuh \
-		  include/gossip/transfer_plan.hpp
+		  include/gossip/transfer_plan.hpp \
+		  include/gossip/all_to_all_plan.hpp \
+		  include/gossip/scatter_plan.hpp \
+		  include/gossip/gather_plan.hpp
 
 GEN = include/gossip/all_to_all.cuh
 DGX = $(GEN) \

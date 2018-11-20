@@ -20,9 +20,7 @@ public:
                   : transfer_plan_t<throw_exceptions>(num_gpus_, transfer_sequences_),
                     target(target_)
     {
-        if(this->transfer_sequences.empty()) load_default_plan();
-        this->synchronized = false;
-        this->valid = verify_plan();
+        initialize();
     }
 
     gather_plan_t(const gpu_id_t target_,
@@ -34,12 +32,18 @@ public:
                                                       num_chunks_, transfer_sizes_),
                      target(target_)
     {
-        if(this->transfer_sequences.empty()) load_default_plan();
-        this->synchronized = false;
-        this->valid = verify_plan();
+        initialize();
     }
 
 private:
+    void initialize() {
+        if(this->num_gpus >= 2) {
+            if(this->transfer_sequences.empty()) load_default_plan();
+            this->synchronized = false;
+            this->valid = verify_plan();
+        }
+    }
+
     void load_default_plan() override {
         this->num_steps = 1;
         this->num_chunks = 1;
