@@ -10,7 +10,8 @@ template<typename data_t>
 void all2all(const size_t batch_size, const size_t batch_size_secure) {
     // auto transfer_plan = gossip::all2all_plan_t<>(2, {{0,0},{0,1},{1,0},{1,1}, {0,0},{0,1},{1,0},{1,1}},
                                                 //   2, {1,1,1,1,1,1,1,1});
-    auto transfer_plan = parse_all2all_plan("all2all_plan.json");
+    auto transfer_plan = gossip::all2all_plan_t<>(2);
+    // auto transfer_plan = parse_all2all_plan("all2all_plan.json");
 
     auto num_gpus = transfer_plan.get_num_gpus();
 
@@ -35,23 +36,35 @@ void all2all(const size_t batch_size, const size_t batch_size_secure) {
 }
 
 template<typename data_t>
-void scatter(const size_t batch_size, const size_t batch_size_secure) {
-    auto transfer_plan = gossip::scatter_plan_t<>(0, 2, {{0,0},{0,1},{0,0},{0,1}},
-                                                  2, {1,1,1,1});
-    // auto transfer_plan = parse_scatter_plan("scatter_plan.json");
+void scatter_gather(const size_t batch_size, const size_t batch_size_secure) {
+    // auto scatter_plan = gossip::scatter_plan_t<>(0, 2, {{0,0},{0,1},{0,0},{0,1}},
+    //                                               2, {1,1,1,1});
+    auto scatter_plan = gossip::scatter_plan_t<>(0, 2);
+    // auto scatter_plan = parse_scatter_plan("scatter_plan.json");
 
-    auto num_gpus = transfer_plan.get_num_gpus();
+    // auto gather_plan = gossip::gather_plan_t<>(0, 2, {{0,0},{1,0},{0,0},{1,0}},
+    //     2, {1,1,1,1});
+    auto gather_plan = gossip::gather_plan_t<>(0, 2);
+    // auto gather_plan = parse_gather_plan("gather_plan.json");
 
-    if(transfer_plan.is_valid()) {
-        // transfer_plan.show_plan();
+    auto num_gpus = scatter_plan.get_num_gpus();
+    if(num_gpus != gather_plan.get_num_gpus()) {
+        std::cout << "scatter and gather do not match" << std::endl;
+        return;
+    }
+
+    if(scatter_plan.is_valid() && gather_plan.is_valid()) {
+        // scatter_plan.show_plan();
+        // gather_plan.show_plan();
 
         auto context = new gossip::context_t<>(num_gpus);
-        auto scatter = new gossip::scatter_t<>(context, transfer_plan);
-        auto multisplit = new gossip::multisplit_t<>(context);
         auto point2point = new gossip::point2point_t<>(context);
+        auto multisplit = new gossip::multisplit_t<>(context);
+        auto scatter = new gossip::scatter_t<>(context, scatter_plan);
+        auto gather = new gossip::gather_t<>(context, gather_plan);
 
-        run_multisplit_scatter<data_t>(
-            context, scatter, multisplit, point2point,
+        run_multisplit_scatter_gather<data_t>(
+            context, point2point, multisplit, scatter, gather,
             batch_size, batch_size_secure);
 
         context->sync_hard();
@@ -72,6 +85,6 @@ int main () {
 
     // all2all<data_t>(batch_size, batch_size_secure);
 
-    scatter<data_t>(batch_size, batch_size_secure);
+    scatter_gather<data_t>(batch_size, batch_size_secure);
 
 }

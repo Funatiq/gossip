@@ -6,6 +6,7 @@ HEADERS = include/gossip.cuh \
 		  include/gossip/context.cuh \
 		  include/gossip/all_to_all.cuh \
 		  include/gossip/scatter.cuh \
+		  include/gossip/gather.cuh \
 		  include/gossip/memory_manager.cuh \
 		  include/gossip/multisplit.cuh \
 		  include/gossip/point_to_point.cuh \

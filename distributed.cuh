@@ -192,12 +192,14 @@ template<
     class T1,
     class T2,
     class T3,
-    class T4>
-void run_multisplit_scatter(
+    class T4,
+    class T5>
+void run_multisplit_scatter_gather(
         T1* context,
-        T2* scatter,
+        T2* point2point,
         T3* multisplit,
-        T4* point2point,
+        T4* scatter,
+        T5* gather,
         const size_t batch_size,
         const size_t batch_size_secure)
 {
@@ -300,19 +302,37 @@ void run_multisplit_scatter(
     scatter->sync();
     TIMERSTOP(scatter)
 
-    TIMERSTART(validate)
-    std::vector<size_t> lengths(num_gpus);
-    for (gpu_id_t trg = 0; trg < num_gpus; trg++) {
-        lengths[trg] = table[main_gpu][trg];
-    }
-
+    TIMERSTART(validate_scatter)
     for (gpu_id_t gpu = 0; gpu < num_gpus; gpu++) {
         cudaSetDevice(context->get_device_id(gpu));
         validate<<<256, 1024, 0, context->get_streams(gpu)[0]>>>
-            (mems[gpu], lengths[gpu], gpu+1, part_hash);
+            (mems[gpu], table[main_gpu][gpu], gpu+1, part_hash);
     }
+    context->sync_hard();
     CUERR
-    TIMERSTOP(validate)
+    TIMERSTOP(validate_scatter)
+
+    gather->show_plan();
+
+    TIMERSTART(gather)
+    gather->execAsync(mems, mems_lens, table[main_gpu]);
+    gather->sync();
+    TIMERSTOP(gather)
+
+    TIMERSTART(validate_gather)
+    std::vector<data_t *> mems2(num_gpus, mems[main_gpu]);
+    for (gpu_id_t trg = 1; trg < num_gpus; trg++) {
+        mems2[trg] = mems2[trg-1] + table[main_gpu][trg-1];
+    }
+
+    cudaSetDevice(context->get_device_id(main_gpu));
+    for (gpu_id_t gpu = 0; gpu < num_gpus; gpu++) {
+        validate<<<256, 1024, 0, context->get_streams(main_gpu)[gpu]>>>
+            (mems2[gpu], table[main_gpu][gpu], gpu+1, part_hash);
+    }
+    context->sync_hard();
+    CUERR
+    TIMERSTOP(validate_gather)
 
     context->sync_hard();
     for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
