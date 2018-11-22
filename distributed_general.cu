@@ -37,14 +37,14 @@ void all2all(const size_t batch_size, const size_t batch_size_secure) {
 
 template<typename data_t>
 void scatter_gather(const size_t batch_size, const size_t batch_size_secure) {
-    // auto scatter_plan = gossip::scatter_plan_t<>(0, 2, {{0,0},{0,1},{0,0},{0,1}},
-    //                                               2, {1,1,1,1});
-    auto scatter_plan = gossip::scatter_plan_t<>(0, 2);
+    auto scatter_plan = gossip::scatter_plan_t<>(0, 2, {{0,0},{0,1},{0,0},{0,1}},
+                                                  2, {1,1,1,1});
+    // auto scatter_plan = gossip::scatter_plan_t<>(0, 2);
     // auto scatter_plan = parse_scatter_plan("scatter_plan.json");
 
-    // auto gather_plan = gossip::gather_plan_t<>(0, 2, {{0,0},{1,0},{0,0},{1,0}},
-    //     2, {1,1,1,1});
-    auto gather_plan = gossip::gather_plan_t<>(0, 2);
+    auto gather_plan = gossip::gather_plan_t<>(0, 2, {{0,0},{1,0},{0,0},{1,0}},
+        2, {1,1,1,1});
+    // auto gather_plan = gossip::gather_plan_t<>(0, 2);
     // auto gather_plan = parse_gather_plan("gather_plan.json");
 
     auto num_gpus = scatter_plan.get_num_gpus();
@@ -80,7 +80,7 @@ int main () {
 
     double security_factor = 1.5;
 
-    size_t batch_size = 1UL << 25;
+    size_t batch_size = 1UL << 5;
     size_t batch_size_secure = batch_size * security_factor;
 
     // all2all<data_t>(batch_size, batch_size_secure);

@@ -157,7 +157,6 @@ private:
         std::vector<size_t> aux_offsets;
 
         const std::vector<table_t>& total_sizes;
-        // std::vector<table_t> h_scan;
 
         size_t num_chunks;
 
@@ -178,8 +177,6 @@ private:
                            num_chunks(num_chunks_)
         {
             for (gpu_id_t part = 0; part < num_gpus; ++part) {
-                // horizontal scan to get initial offsets
-                // h_scan[part+1] = total_sizes[part]+h_scan[part];
                 // aux offsets begin at the end of own part
                 aux_offsets[part] = total_sizes[part];
             }
@@ -202,6 +199,7 @@ private:
             size_t* src_offset = &src_offsets[sequence.back()];
             const size_t size_per_chunk = SDIV(total_sizes[sequence.back()], num_chunks);
             size_t transfer_size = size_per_chunk * chunks;
+            // check bounds
             if (*src_offset + transfer_size > total_sizes[sequence.back()])
                 transfer_size = total_sizes[sequence.back()] - *src_offset;
 
@@ -217,6 +215,9 @@ private:
                                        sequence.back(), *trg_offset,
                                        transfer_size,
                                        event_before, event_after);
+                // advance offsets
+                *src_offset += transfer_size;
+                *trg_offset += transfer_size;
             }
             else { // src != trg
                 const gpu_id_t final_trg = sequence.back();
@@ -227,7 +228,7 @@ private:
                         if (sequence[phase+1] != final_trg) {
                             // tranfer to auxiliary memory
                             trg_offset = &aux_offsets[sequence[phase+1]];
-                            // create event after transfer for syncrhonization
+                            // create event after transfer for synchronization
                             event_after = new cudaEvent_t();
                             cudaSetDevice(sequence[phase]);
                             cudaEventCreate(event_after);
@@ -255,17 +256,17 @@ private:
                             break;
                     }
                 }
+                // advance last offset
+                if (trg_offset)
+                    *trg_offset += transfer_size;
             }
-            // advance last offset
-            if (trg_offset)
-                *trg_offset += transfer_size;
 
             return true;
         }
     };
 
     void show_phase(const std::vector<transfer>& transfers,
-                    const std::vector<size_t>& displacements) const {
+                    const std::vector<size_t  >& displacements) const {
         for(const transfer& t : transfers) {
             size_t src_pos = (t.src_pos == transfer_plan.get_main_gpu()) ?
                              t.src_pos + displacements[t.trg_gpu] :
@@ -280,20 +281,33 @@ private:
     }
 
     template<typename index_t>
-    bool check_transfers_size(const std::vector<size_t >& result_sizes,
+    bool check_sendbuf_size(const size_t buf_accessed,
+                            const index_t buf_len) const {
+
+        if (buf_accessed > buf_len)
+            if (throw_exceptions)
+                throw std::invalid_argument(
+                    "sendbuf access out of bounds.");
+            else return false;
+        return true;
+    }
+
+    template<typename index_t>
+    bool check_transfers_size(const std::vector<size_t >& own_sizes,
                               const std::vector<size_t >& buffer_sizes,
                               const std::vector<index_t>& array_lens) const {
+
         for (gpu_id_t trg = 0; trg < num_gpus; trg++) {
-            if (result_sizes[trg] > array_lens[trg])
+            if (own_sizes[trg] > array_lens[trg])
                 if (throw_exceptions)
                     throw std::invalid_argument(
-                        "array lens not large enough for results.");
+                        "recvbuf not large enough for results.");
                 else return false;
 
             if (buffer_sizes[trg] > array_lens[trg])
                 if (throw_exceptions)
                     throw std::invalid_argument(
-                        "array lens not large enough for results + buffer overhead.");
+                        "recvbuf not large enough for results + buffer overhead.");
                 else return false;
         }
         return true;
@@ -384,7 +398,7 @@ public:
             }
         }
 
-        std::vector<table_t> displacements(num_gpus+1);
+        std::vector<size_t> displacements(num_gpus+1);
         for (gpu_id_t part = 0; part < num_gpus; ++part) {
             // horizontal scan to get displacements
             displacements[part+1] = sendsizes[part] + displacements[part];
@@ -393,6 +407,8 @@ public:
         for (size_t p = 0; p < num_phases; ++p)
             show_phase(transfers.phases[p], displacements);
 
+        if (!check_sendbuf_size(displacements.back(), sendbuf_len))
+            return false;
         if (!check_transfers_size(transfers.own_offsets, transfers.aux_offsets, recvbufs_lens))
             return false;
 

@@ -82,7 +82,7 @@ public:
                 throw std::invalid_argument(
                     "You have to pass a valid context!"
                 );
- 
+
         plan_valid = transfer_plan.is_valid();
     }
 
@@ -226,7 +226,7 @@ private:
                 else return false;
         }
         return true;
-    }    
+    }
 
     template<typename value_t>
     bool execute_phase(const std::vector<transfer>& transfers,
@@ -243,7 +243,7 @@ private:
                 throw std::invalid_argument(
                     "dsts size does not match number of gpus.");
             else return false;
-            
+
         for(const transfer& t : transfers) {
             const gpu_id_t src = context->get_device_id(t.src_gpu);
             const gpu_id_t trg = context->get_device_id(t.trg_gpu);
@@ -336,8 +336,8 @@ public:
                         "table size does not match number of gpus.");
                 else return false;
 
-        auto num_phases = transfer_plan.get_num_steps();
-        auto num_chunks = transfer_plan.get_num_chunks();
+        const auto num_phases = transfer_plan.get_num_steps();
+        const auto num_chunks = transfer_plan.get_num_chunks();
 
         transfer_handler<table_t> transfers(num_gpus, num_phases, table, num_chunks);
 
