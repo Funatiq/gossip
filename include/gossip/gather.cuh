@@ -180,7 +180,7 @@ private:
                          : num_gpus(num_gpus_),
                            num_phases(num_phases_),
                            phases(num_phases),
-                           trg_offsets(num_gpus),
+                           trg_offsets(displacements),
                            own_offsets(num_gpus),
                            aux_offsets(num_gpus),
                            displacements(displacements),
