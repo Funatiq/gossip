@@ -145,6 +145,15 @@ private:
             event_before(event_before),
             event_after(event_after)
         {}
+
+        void show() {
+            std::cout <<   "src:" << int(src_gpu)
+                      << ", pos:" << src_pos
+                      << ", trg:" << int(trg_gpu)
+                      << ", pos:" << trg_pos
+                      << ", len:" << len
+                      << std::endl;
+        }
     };
 
     template<typename table_t>
@@ -191,7 +200,8 @@ private:
         }
 
         bool push_back(const std::vector<gpu_id_t>& sequence,
-                       const size_t chunks = 1)
+                       const size_t chunks = 1,
+                       const bool verbose = false)
         {
             if (sequence.size() != num_phases+1)
                 if (throw_exceptions)
@@ -213,6 +223,11 @@ private:
             cudaEvent_t* event_before = nullptr;
             cudaEvent_t* event_after = nullptr;
 
+            if (verbose)
+                std::cout << "transfer from " << int(sequence.front())
+                          << " to " << int(sequence.back())
+                          << std::endl;
+
             if (sequence.front() == sequence.back()) { // src == trg
                 // direct transfer (copy) in first phase
                 trg_offset = &trg_offsets[sequence.back()];
@@ -221,6 +236,7 @@ private:
                                        sequence.back(), *trg_offset,
                                        transfer_size,
                                        event_before, event_after);
+                if (verbose) phases[0].back().show();
 
                 // advance offsets
                 *src_offset += transfer_size;
@@ -249,6 +265,7 @@ private:
                                                    sequence[phase+1], *trg_offset,
                                                    transfer_size,
                                                    event_before, event_after);
+                        if (verbose) phases[phase].back().show();
 
                         // advance offset
                         *src_offset += transfer_size;
@@ -272,13 +289,10 @@ private:
     void show_phase(const std::vector<transfer>& transfers,
                     const std::vector<size_t  >& displacements) const {
         for(const transfer& t : transfers) {
-            size_t trg_pos = (t.trg_pos == transfer_plan.get_main_gpu()) ?
-                             t.trg_pos + displacements[t.src_gpu] :
-                             t.trg_pos;
             std::cout <<   "src:" << int(t.src_gpu)
                       << ", pos:" << t.src_pos
                       << ", trg:" << int(t.trg_gpu)
-                      << ", pos:" << trg_pos
+                      << ", pos:" << t.trg_pos
                       << ", len:" << t.len
                       << std::endl;
         }
@@ -393,12 +407,13 @@ public:
         if (num_chunks > 1) {
             for (size_t i = 0; i < transfer_plan.get_transfer_sequences().size(); ++i) {
                 transfers.push_back(transfer_plan.get_transfer_sequences()[i],
-                                    transfer_plan.get_transfer_sizes()[i]);
+                                    transfer_plan.get_transfer_sizes()[i],
+                                    true);
             }
         }
         else {
              for (const auto& sequence : transfer_plan.get_transfer_sequences()) {
-                transfers.push_back(sequence);
+                transfers.push_back(sequence, 1, true);
             }
         }
 
@@ -408,8 +423,8 @@ public:
             displacements[part+1] = sendsizes[part] + displacements[part];
         }
 
-        for (size_t p = 0; p < num_phases; ++p)
-            show_phase(transfers.phases[p], displacements);
+        // for (size_t p = 0; p < num_phases; ++p)
+        //     show_phase(transfers.phases[p], displacements);
 
         if(!check_recvbuf_size(displacements.back(), recvbuf_len))
             return false;

@@ -355,7 +355,7 @@ public:
         }
 
         for (size_t p = 0; p < num_phases; ++p) {
-            // show_phase(transfers.phases[p]);
+            show_phase(transfers.phases[p]);
             if(!check_phase_size(transfers.phases_offsets[p], dsts_lens)) return false;
         }
 
