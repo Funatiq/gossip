@@ -1,0 +1,9 @@
+{
+  "chunks": [1, 1, 1, 1],
+  "num_steps": 2,
+  "plan": [[0, 0, 0], [0, 1, 1], [0, 2, 2], [0, 3, 3]],
+  "type": "scatter",
+  "main_gpu": 0,
+  "num_gpus": 4,
+  "num_chunks": 1
+}
