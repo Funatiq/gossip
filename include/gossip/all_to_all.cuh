@@ -145,28 +145,29 @@ private:
         std::vector<std::vector<transfer> > phases;
         std::vector<std::vector<size_t> > phases_offsets;
 
+        const std::vector<std::vector<size_t> >& displacements;
         const std::vector<std::vector<table_t> >& table;
-        std::vector<std::vector<table_t> > h_table;
+        std::vector<std::vector<size_t> > src_offsets;
 
         size_t num_chunks;
 
         transfer_handler(const gpu_id_t num_gpus_,
                          const size_t num_phases_,
+                         const std::vector<std::vector<table_t>>& displacements,
                          const std::vector<std::vector<table_t>>& table,
                          const size_t num_chunks_ = 1)
                          : num_gpus(num_gpus_),
                            num_phases(num_phases_),
                            phases(num_phases),
                            phases_offsets(num_phases, std::vector<size_t>(num_gpus)),
+                           displacements(displacements),
                            table(table),
-                           h_table(num_gpus, std::vector<table_t>(num_gpus+1)),
-                           num_chunks(num_chunks_) {
-
-            // horizontal scan to get initial offsets
+                           src_offsets(num_gpus, std::vector<size_t>(num_gpus)),
+                           num_chunks(num_chunks_)
+        {
             for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
-                for (gpu_id_t part = 0; part < num_gpus; ++part) {
-                    h_table[gpu][part+1] = table[gpu][part]+h_table[gpu][part];
-                }
+                // src offsets begin at displacements
+                std::copy(displacements[gpu].begin(), displacements[gpu].end()-1, src_offsets[gpu].begin());
             }
         }
 
@@ -179,17 +180,19 @@ private:
                         "sequence size does not match number of phases.");
                 else return false;
 
-            const size_t offset = h_table[sequence.front()][sequence.back()];
+            const size_t offset = src_offsets[sequence.front()][sequence.back()];
             const size_t size_per_chunk = SDIV(table[sequence.front()][sequence.back()], num_chunks);
             size_t transfer_size = size_per_chunk * chunks;
-            if (offset + transfer_size > h_table[sequence.front()][sequence.back()+1])
-                transfer_size = h_table[sequence.front()][sequence.back()+1] - offset;
+            // check bounds
+            const size_t limit = displacements[sequence.front()][sequence.back()] + table[sequence.front()][sequence.back()];
+            if (offset + transfer_size > limit)
+                transfer_size = limit - offset;
 
             size_t phase = 0;
             phases[phase].emplace_back(sequence[phase], offset,
                                        sequence[phase+1], phases_offsets[phase][sequence[phase+1]],
                                        transfer_size);
-            h_table[sequence.front()][sequence.back()] += transfer_size;
+            src_offsets[sequence.front()][sequence.back()] += transfer_size;
 
             for (size_t phase = 1; phase < num_phases; ++phase) {
                 phases[phase].emplace_back(sequence[phase], phases_offsets[phase-1][sequence[phase]],
@@ -339,7 +342,17 @@ public:
         const auto num_phases = transfer_plan.get_num_steps();
         const auto num_chunks = transfer_plan.get_num_chunks();
 
-        transfer_handler<table_t> transfers(num_gpus, num_phases, table, num_chunks);
+        std::vector<std::vector<size_t> > displacements(num_gpus, std::vector<size_t>(num_gpus+1));
+        // horizontal scan to get initial offsets
+        for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
+            for (gpu_id_t part = 0; part < num_gpus; ++part) {
+                displacements[gpu][part+1] = table[gpu][part]+displacements[gpu][part];
+            }
+        }
+
+        transfer_handler<table_t> transfers(num_gpus, num_phases,
+                                            displacements, table,
+                                            num_chunks);
 
         // prepare transfers according to transfer_plan
         if (num_chunks > 1) {
@@ -355,7 +368,7 @@ public:
         }
 
         for (size_t p = 0; p < num_phases; ++p) {
-            show_phase(transfers.phases[p]);
+            // show_phase(transfers.phases[p]);
             if(!check_phase_size(transfers.phases_offsets[p], dsts_lens)) return false;
         }
 
