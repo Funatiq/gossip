@@ -90,7 +90,7 @@ void run_multisplit_all2all(
     CUERR
     TIMERSTOP(zero_gpu_buffers)
 
-    std::cout << "INFO: " << sizeof(data_t)*batch_size*num_gpus << " bytes" << std::endl;
+    std::cout << "INFO: " << sizeof(data_t)*batch_size*num_gpus << " bytes (all2all)" << std::endl;
 
     TIMERSTART(malloc_host)
     data_t * data_h = nullptr;
@@ -155,7 +155,7 @@ void run_multisplit_all2all(
         dsts[gpu] = ying[gpu];
     }
 
-    all2all->show_plan();
+    //all2all->show_plan();
 
     TIMERSTART(all2all)
     all2all->execAsync(srcs, srcs_lens, dsts, dsts_lens, table);
@@ -236,7 +236,7 @@ void run_multisplit_scatter_gather(
     CUERR
     TIMERSTOP(zero_gpu_buffers)
 
-    std::cout << "INFO: " << sizeof(data_t)*batch_size << " bytes" << std::endl;
+    std::cout << "INFO: " << sizeof(data_t)*batch_size << " bytes (scatter/gather)" << std::endl;
 
     TIMERSTART(malloc_host)
     data_t * data_h = nullptr;
@@ -299,7 +299,7 @@ void run_multisplit_scatter_gather(
         mems_lens[gpu] = batch_size_secure;
     }
 
-    scatter->show_plan();
+    //scatter->show_plan();
 
     TIMERSTART(scatter)
     scatter->execAsync(srcs[main_gpu], batch_size_secure, table[main_gpu], dsts, mems_lens);
@@ -338,7 +338,7 @@ void run_multisplit_scatter_gather(
         dsts[gpu] = yang[gpu];
     }
 
-    gather->show_plan();
+    //gather->show_plan();
 
     TIMERSTART(gather)
     gather->execAsync(srcs, mems_lens, table[main_gpu], dsts[main_gpu], batch_size_secure);

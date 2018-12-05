@@ -76,12 +76,17 @@ void scatter_gather(const size_t batch_size, const size_t batch_size_secure) {
     }
 }
 
-int main () {
+int main (int argc, char *argv[]) {
     using data_t = uint64_t;
 
     double security_factor = 1.5;
 
     size_t batch_size = 1UL << 5;
+    if(argc == 2)
+    {
+        batch_size = std::atoll(argv[1]);
+    }
+
     size_t batch_size_secure = batch_size * security_factor;
 
     all2all<data_t>(batch_size, batch_size_secure);
