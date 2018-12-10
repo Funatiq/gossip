@@ -157,10 +157,9 @@ private:
         size_t num_phases;
         std::vector<std::vector<transfer> > phases;
         std::vector<size_t> trg_offsets;
-        std::vector<size_t> own_offsets;
+        std::vector<size_t> src_offsets;
         std::vector<size_t> aux_offsets;
 
-        const std::vector<size_t>& displacements;
         const std::vector<table_t>& total_sizes;
 
         size_t num_chunks;
@@ -170,26 +169,21 @@ private:
         transfer_handler(
             const context_t<> * context_,
             const size_t num_phases_,
-            const std::vector<size_t>& displacements,
+            const std::vector<size_t>& trg_displacements,
             const std::vector<table_t>& total_sizes,
             const size_t num_chunks_ = 1
         ) :
             context(context_),
             num_phases(num_phases_),
             phases(num_phases),
-            trg_offsets(context->get_num_devices()),
-            own_offsets(context->get_num_devices()),
-            aux_offsets(context->get_num_devices()),
-            displacements(displacements),
+            // trg offsets begin at trg displacements
+            trg_offsets(trg_displacements),
+            src_offsets(context->get_num_devices()),
+            // aux offsets begin at the end of own part
+            aux_offsets(total_sizes),
             total_sizes(total_sizes),
             num_chunks(num_chunks_)
-        {
-            // aux offsets begin at the end of own part
-            std::copy(total_sizes.begin(), total_sizes.end(), aux_offsets.begin());
-            // trg offsets begin at displacements
-            std::copy(displacements.begin(), displacements.end()-1, trg_offsets.begin());
-
-        }
+        {}
 
         ~transfer_handler() {
             for(auto& e : events)
@@ -207,7 +201,7 @@ private:
                         "sequence size does not match number of phases.");
                 else return false;
 
-            size_t* src_offset = &own_offsets[sequence.front()];
+            size_t* src_offset = &src_offsets[sequence.front()];
             const size_t size_per_chunk = SDIV(total_sizes[sequence.front()], num_chunks);
             size_t transfer_size = size_per_chunk * chunks;
             // check bounds
@@ -426,7 +420,7 @@ public:
 
         if(!check_recvbuf_size(displacements.back(), recvbuf_len))
             return false;
-        if(!check_transfers_size(transfers.own_offsets, transfers.aux_offsets, sendbufs_lens))
+        if(!check_transfers_size(transfers.src_offsets, transfers.aux_offsets, sendbufs_lens))
             return false;
 
         // syncs with zero stream in order to enforce sequential
