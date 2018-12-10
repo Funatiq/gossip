@@ -3,6 +3,7 @@
 #include <cstring>
 
 #include "config.h"
+#include "context.cuh"
 
 namespace gossip {
 
@@ -10,38 +11,35 @@ template<
     bool throw_exceptions=true>
 class memory_manager_t {
 
-    gpu_id_t num_gpus;
-    context_t<> * context;
+    const context_t<> * context;
     bool external_context;
 
 public:
 
     memory_manager_t (
         const gpu_id_t num_gpus_)
-        : external_context (false) {
-
+        : external_context (false)
+    {
         context = new context_t<>(num_gpus_);
-        num_gpus = context->get_num_devices();
     }
 
     memory_manager_t (
         const std::vector<gpu_id_t>& device_ids_)
-        : external_context (false) {
-
+        : external_context (false)
+    {
         context = new context_t<>(device_ids_);
-        num_gpus = context->get_num_devices();
     }
 
     memory_manager_t (
-        context_t<> * context_) : context(context_),
-                                  external_context (true) {
+        const context_t<> * context_)
+        : context(context_),
+          external_context (true)
+    {
             if (throw_exceptions)
                 if (!context->is_valid())
                     throw std::invalid_argument(
                         "You have to pass a valid context!"
                     );
-
-        num_gpus = context->get_num_devices();
     }
 
     ~memory_manager_t () {
@@ -60,16 +58,16 @@ public:
 
         std::vector<value_t *> data = {};
 
-        if (lens.size() != num_gpus)
+        if (lens.size() != get_num_devices())
             if (throw_exceptions)
                 throw std::invalid_argument(
                     "lens size does not match number of gpus.");
             else return data;
 
-        data.resize(num_gpus);
+        data.resize(get_num_devices());
 
         // malloc as device-sided memory
-        for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
+        for (gpu_id_t gpu = 0; gpu < get_num_devices(); ++gpu) {
             cudaSetDevice(context->get_device_id(gpu));
             cudaMalloc(&data[gpu], sizeof(value_t)*lens[gpu]);
             if (zero)
@@ -91,16 +89,16 @@ public:
 
         std::vector<value_t *> data = {};
 
-        if (lens.size() != num_gpus)
+        if (lens.size() != get_num_devices())
             if (throw_exceptions)
                 throw std::invalid_argument(
                     "lens size does not match number of gpus.");
             else return data;
 
-        data.resize(num_gpus);
+        data.resize(get_num_devices());
 
         // malloc as host-sided pinned memory
-        for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
+        for (gpu_id_t gpu = 0; gpu < get_num_devices(); ++gpu) {
             cudaMallocHost(&data[gpu], sizeof(value_t)*lens[gpu]);
             if (zero)
                 std::memset(data[gpu], 0, sizeof(value_t)*lens[gpu]);
@@ -114,13 +112,13 @@ public:
         typename value_t>
     bool free_device(std::vector<value_t *>& data) const {
 
-        if (data.size() != num_gpus)
+        if (data.size() != get_num_devices())
             if (throw_exceptions)
                 throw std::invalid_argument(
                     "data size does not match number of gpus.");
             else return false;
 
-        for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
+        for (gpu_id_t gpu = 0; gpu < get_num_devices(); ++gpu) {
             cudaSetDevice(context->get_device_id(gpu));
             cudaFree(data[gpu]);
         }
@@ -133,17 +131,21 @@ public:
         typename value_t>
     bool free_host(std::vector<value_t *>& data) const {
 
-        if (data.size() != num_gpus)
+        if (data.size() != get_num_devices())
             if (throw_exceptions)
                 throw std::invalid_argument(
                     "data size does not match number of gpus.");
             else return false;
 
-        for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu)
+        for (gpu_id_t gpu = 0; gpu < get_num_devices(); ++gpu)
             cudaFreeHost(data[gpu]);
         CUERR
 
         return true;
+    }
+
+    gpu_id_t get_num_devices () const noexcept {
+        return context->get_num_devices();
     }
 };
 

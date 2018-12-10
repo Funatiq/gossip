@@ -1,8 +1,10 @@
 #pragma once
 
 #include <vector>
+#include <stdexcept>
 
 #include "config.h"
+#include "context.cuh"
 #include "gather_plan.hpp"
 
 namespace gossip {
@@ -12,8 +14,7 @@ template<
 class gather_t {
 
 protected:
-    context_t<> * context;
-    gpu_id_t num_gpus;
+    const context_t<> * context;
 private:
     bool external_context;
 
@@ -29,7 +30,6 @@ public:
           transfer_plan(main_gpu_, num_gpus_)
     {
         context = new context_t<>(num_gpus_);
-        num_gpus = context->get_num_devices();
 
         plan_valid = transfer_plan.is_valid();
     }
@@ -41,9 +41,8 @@ public:
           transfer_plan(transfer_plan_)
     {
         context = new context_t<>(num_gpus_);
-        num_gpus = context->get_num_devices();
 
-        plan_valid = (num_gpus == transfer_plan.get_num_gpus()) &&
+        plan_valid = (get_num_devices() == transfer_plan.get_num_gpus()) &&
                      transfer_plan.is_valid();
     }
 
@@ -54,7 +53,6 @@ public:
           transfer_plan(main_gpu_, device_ids_.size())
     {
         context = new context_t<>(device_ids_);
-        num_gpus = context->get_num_devices();
 
         plan_valid = transfer_plan.is_valid();
     }
@@ -66,19 +64,17 @@ public:
           transfer_plan(transfer_plan_)
     {
         context = new context_t<>(device_ids_);
-        num_gpus = context->get_num_devices();
 
-        plan_valid = (num_gpus == transfer_plan.get_num_gpus()) &&
+        plan_valid = (get_num_devices() == transfer_plan.get_num_gpus()) &&
                      transfer_plan.is_valid();
     }
 
      gather_t (
-        context_t<> * context_,
+        const context_t<> * context_,
         const gpu_id_t main_gpu_)
         : context(context_),
-          num_gpus(context->get_num_devices()),
           external_context (true),
-          transfer_plan(main_gpu_, num_gpus)
+          transfer_plan(main_gpu_, get_num_devices())
     {
         if (throw_exceptions)
             if (!context->is_valid())
@@ -90,10 +86,9 @@ public:
     }
 
     gather_t (
-        context_t<> * context_,
+        const context_t<> * context_,
         const gather_plan_t<>& transfer_plan_)
         : context(context_),
-          num_gpus(context->get_num_devices()),
           external_context (true),
           transfer_plan(transfer_plan_)
     {
@@ -103,7 +98,7 @@ public:
                     "You have to pass a valid context!"
                 );
 
-        plan_valid = (num_gpus == transfer_plan.get_num_gpus()) &&
+        plan_valid = (get_num_devices() == transfer_plan.get_num_gpus()) &&
                      transfer_plan.is_valid();
     }
 
@@ -158,7 +153,7 @@ private:
 
     template<typename table_t>
     struct transfer_handler {
-        gpu_id_t num_gpus;
+        const context_t<> * context;
         size_t num_phases;
         std::vector<std::vector<transfer> > phases;
         std::vector<size_t> trg_offsets;
@@ -172,20 +167,22 @@ private:
 
         std::vector<cudaEvent_t*> events;
 
-        transfer_handler(const gpu_id_t num_gpus_,
-                         const size_t num_phases_,
-                         const std::vector<size_t>& displacements,
-                         const std::vector<table_t>& total_sizes,
-                         const size_t num_chunks_ = 1)
-                         : num_gpus(num_gpus_),
-                           num_phases(num_phases_),
-                           phases(num_phases),
-                           trg_offsets(num_gpus),
-                           own_offsets(num_gpus),
-                           aux_offsets(num_gpus),
-                           displacements(displacements),
-                           total_sizes(total_sizes),
-                           num_chunks(num_chunks_)
+        transfer_handler(
+            const context_t<> * context_,
+            const size_t num_phases_,
+            const std::vector<size_t>& displacements,
+            const std::vector<table_t>& total_sizes,
+            const size_t num_chunks_ = 1
+        ) :
+            context(context_),
+            num_phases(num_phases_),
+            phases(num_phases),
+            trg_offsets(context->get_num_devices()),
+            own_offsets(context->get_num_devices()),
+            aux_offsets(context->get_num_devices()),
+            displacements(displacements),
+            total_sizes(total_sizes),
+            num_chunks(num_chunks_)
         {
             // aux offsets begin at the end of own part
             std::copy(total_sizes.begin(), total_sizes.end(), aux_offsets.begin());
@@ -199,9 +196,10 @@ private:
                 cudaEventDestroy(*e);
         }
 
-        bool push_back(const std::vector<gpu_id_t>& sequence,
-                       const size_t chunks = 1,
-                       const bool verbose = false)
+        bool push_back(
+            const std::vector<gpu_id_t>& sequence,
+            const size_t chunks = 1,
+            const bool verbose = false)
         {
             if (sequence.size() != num_phases+1)
                 if (throw_exceptions)
@@ -252,7 +250,8 @@ private:
                             trg_offset = &aux_offsets[sequence[phase+1]];
                             // create event after transfer for synchronization
                             event_after = new cudaEvent_t();
-                            cudaSetDevice(sequence[phase]);
+                            const gpu_id_t id = context->get_device_id(sequence[phase]);
+                            cudaSetDevice(id);
                             cudaEventCreate(event_after);
                             events.push_back(event_after);
                         }
@@ -301,8 +300,8 @@ private:
 
     template<typename index_t>
     bool check_recvbuf_size(const size_t buf_accessed,
-                            const index_t buf_len) const {
-
+                            const index_t buf_len
+    ) const {
         if (buf_accessed > buf_len)
             if (throw_exceptions)
                 throw std::invalid_argument(
@@ -312,11 +311,12 @@ private:
     }
 
     template<typename index_t>
-    bool check_transfers_size(const std::vector<size_t >& own_sizes,
-                              const std::vector<size_t >& buffer_sizes,
-                              const std::vector<index_t>& array_lens) const {
-
-        for (gpu_id_t trg = 0; trg < num_gpus; trg++) {
+    bool check_transfers_size(
+        const std::vector<size_t >& own_sizes,
+        const std::vector<size_t >& buffer_sizes,
+        const std::vector<index_t>& array_lens
+    ) const {
+        for (gpu_id_t trg = 0; trg < get_num_devices(); trg++) {
             if (own_sizes[trg] > array_lens[trg])
                 if (throw_exceptions)
                     throw std::invalid_argument(
@@ -333,11 +333,12 @@ private:
     }
 
     template<typename value_t>
-    bool execute_phase(const std::vector<transfer>& transfers,
-                       const std::vector<value_t *>& sendbufs,
-                       value_t * recvbuf) const {
-
-        if (sendbufs.size() != num_gpus)
+    bool execute_phase(
+        const std::vector<transfer>& transfers,
+        const std::vector<value_t *>& sendbufs,
+        value_t * recvbuf
+    ) const {
+        if (sendbufs.size() != get_num_devices())
             if (throw_exceptions)
                 throw std::invalid_argument(
                     "recvbufs size does not match number of gpus.");
@@ -374,20 +375,19 @@ public:
         value_t * recvbuf,                            // recvbuf resides on device_ids[main_gpu]
         const index_t recvbuf_len                     // recvbuf_len is length of recvbuf
     ) const {
-
         if (!plan_valid) return false;
 
-        if (sendbufs.size() != num_gpus)
+        if (sendbufs.size() != get_num_devices())
             if (throw_exceptions)
                 throw std::invalid_argument(
                     "sendbufs size does not match number of gpus.");
             else return false;
-        if (sendbufs_lens.size() != num_gpus)
+        if (sendbufs_lens.size() != get_num_devices())
             if (throw_exceptions)
                 throw std::invalid_argument(
                     "sendbufs_lens size does not match number of gpus.");
             else return false;
-        if (sendsizes.size() != num_gpus)
+        if (sendsizes.size() != get_num_devices())
             if (throw_exceptions)
                 throw std::invalid_argument(
                     "sendsizes size does not match number of gpus.");
@@ -396,13 +396,13 @@ public:
         const auto num_phases = transfer_plan.get_num_steps();
         const auto num_chunks = transfer_plan.get_num_chunks();
 
-        std::vector<size_t> displacements(num_gpus+1);
-        for (gpu_id_t part = 0; part < num_gpus; ++part) {
+        std::vector<size_t> displacements(get_num_devices()+1);
+        for (gpu_id_t part = 0; part < get_num_devices(); ++part) {
             // exclusive scan to get displacements
             displacements[part+1] = sendsizes[part] + displacements[part];
         }
 
-        transfer_handler<table_t> transfers(num_gpus, num_phases,
+        transfer_handler<table_t> transfers(context, num_phases,
                                             displacements, sendsizes,
                                             num_chunks);
 
@@ -439,6 +439,10 @@ public:
         }
 
         return true;
+    }
+
+    gpu_id_t get_num_devices () const noexcept {
+        return context->get_num_devices();
     }
 
     void print_connectivity_matrix () const noexcept {
