@@ -1,5 +1,7 @@
 NVCC=nvcc
-NVCCFLAGS=-O3 -std=c++14 -arch=sm_70 --expt-extended-lambda -Xcompiler="-fopenmp" -Wreorder
+NVCCGENCODE = -gencode arch=compute_60,code=sm_60 \
+              -gencode arch=compute_70,code=sm_70
+NVCCFLAGS = $(NVCCGENCODE) -O3 -std=c++14 --expt-extended-lambda -Xcompiler="-fopenmp" -Wreorder -lineinfo
 
 HEADERS = include/gossip.cuh \
 		  include/gossip/auxiliary.cuh \
