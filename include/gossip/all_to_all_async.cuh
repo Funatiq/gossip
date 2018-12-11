@@ -151,14 +151,15 @@ private:
     template<typename table_t>
     struct transfer_handler {
         const context_t<> * context;
-        size_t num_phases;
-        std::vector<std::vector<transfer> > phases;
 
         const std::vector<std::vector<size_t> >& src_displacements;
-        const std::vector<std::vector<table_t> >& sizes;
         std::vector<std::vector<size_t> > src_offsets;
         std::vector<std::vector<size_t> > trg_offsets;
         std::vector<size_t> aux_offsets;
+        const std::vector<std::vector<table_t> >& sizes;
+
+        size_t num_phases;
+        std::vector<std::vector<transfer> > phases;
 
         size_t num_chunks;
 
@@ -166,20 +167,20 @@ private:
 
         transfer_handler(
             const context_t<> * context_,
-            const size_t num_phases_,
             const std::vector<std::vector<size_t>>& src_displacements,
             const std::vector<std::vector<size_t>>& trg_displacements,
             const std::vector<std::vector<table_t>>& sizes,
+            const size_t num_phases_,
             const size_t num_chunks_ = 1
         ) :
             context(context_),
-            num_phases(num_phases_),
-            phases(num_phases),
             src_displacements(src_displacements),
-            sizes(sizes),
             src_offsets(src_displacements),     // src offsets begin at src displacements
             trg_offsets(trg_displacements),     // trg offsets begin at trg displacements
             aux_offsets(context->get_num_devices()),
+            sizes(sizes),
+            num_phases(num_phases_),
+            phases(num_phases),
             num_chunks(num_chunks_)
         {}
 
@@ -216,10 +217,13 @@ private:
             if (sequence.front() == sequence.back()) { // src == trg
                 // direct transfer (copy) in first phase
                 const size_t phase = 0;
+                const gpu_id_t src = sequence.front();
+                const gpu_id_t trg = sequence.back();
+
                 trg_offset = &trg_offsets[sequence.front()][sequence.back()];
 
-                phases[phase].emplace_back(sequence.front(), *src_offset,
-                                           sequence.back(), *trg_offset,
+                phases[phase].emplace_back(src, *src_offset,
+                                           trg, *trg_offset,
                                            transfer_size,
                                            event_before, event_after);
                 if (verbose) phases[phase].back().show();
@@ -232,14 +236,16 @@ private:
                 const gpu_id_t final_trg = sequence.back();
 
                 for (size_t phase = 0; phase < num_phases; ++phase) {
+                    const gpu_id_t src = sequence[phase];
+                    const gpu_id_t trg = sequence[phase+1];
                     // schedule tranfer only if device changes
-                    if (sequence[phase] != sequence[phase+1]) {
-                        if (sequence[phase+1] != final_trg) {
+                    if (src != trg) {
+                        if (trg != final_trg) {
                             // tranfer to auxiliary memory
-                            trg_offset = &aux_offsets[sequence[phase+1]];
+                            trg_offset = &aux_offsets[trg];
                             // create event after transfer for synchronization
                             event_after = new cudaEvent_t();
-                            const gpu_id_t id = context->get_device_id(sequence[phase]);
+                            const gpu_id_t id = context->get_device_id(src);
                             cudaSetDevice(id);
                             cudaEventCreate(event_after);
                             events.push_back(event_after);
@@ -251,8 +257,8 @@ private:
                             event_after = nullptr;
                         }
 
-                        phases[phase].emplace_back(sequence[phase], *src_offset,
-                                                   sequence[phase+1], *trg_offset,
+                        phases[phase].emplace_back(src, *src_offset,
+                                                   trg, *trg_offset,
                                                    transfer_size,
                                                    event_before, event_after);
                         if (verbose) phases[phase].back().show();
@@ -263,7 +269,7 @@ private:
                         src_offset = trg_offset;
                         event_before = event_after;
 
-                        if (sequence[phase+1] == final_trg)
+                        if (trg == final_trg)
                             break;
                     }
                 }
@@ -321,7 +327,8 @@ private:
     bool execute_phase(
         const std::vector<transfer>& transfers,
         const std::vector<value_t *>& srcs,
-        const std::vector<value_t *>& dsts
+        const std::vector<value_t *>& dsts,
+        const std::vector<value_t *>& bufs
     ) const {
         if (srcs.size() != get_num_devices())
             if (throw_exceptions)
@@ -333,6 +340,11 @@ private:
                 throw std::invalid_argument(
                     "dsts size does not match number of gpus.");
             else return false;
+        if (bufs.size() != get_num_devices())
+            if (throw_exceptions)
+                throw std::invalid_argument(
+                    "dsts size does not match number of gpus.");
+            else return false;
 
         for(const transfer& t : transfers) {
             const gpu_id_t src = context->get_device_id(t.src_gpu);
@@ -340,10 +352,16 @@ private:
             const auto stream  = context->get_streams(t.src_gpu)[t.trg_gpu];
             cudaSetDevice(src);
             const size_t size = t.len * sizeof(value_t);
-            value_t * from = srcs[t.src_gpu] + t.src_pos;
-            value_t * to   = dsts[t.trg_gpu] + t.trg_pos;
+            value_t * from = (t.event_before == nullptr) ?
+                             srcs[t.src_gpu] + t.src_pos :
+                             bufs[t.src_gpu] + t.src_pos;
+            value_t * to   = (t.event_after == nullptr) ?
+                             dsts[t.trg_gpu] + t.trg_pos :
+                             bufs[t.trg_gpu] + t.trg_pos;
 
+            if(t.event_before != nullptr) cudaStreamWaitEvent(stream, *(t.event_before), 0);
             cudaMemcpyPeerAsync(to, trg, from, src, size, stream);
+            if(t.event_after != nullptr) cudaEventRecord(*(t.event_after), stream);
         } CUERR
 
         return true;
@@ -447,11 +465,11 @@ public:
             }
         }
 
-        transfer_handler<table_t> transfers(context, num_phases,
+        transfer_handler<table_t> transfers(context,
                                             src_displacements,
                                             trg_displacements,
                                             sizes,
-                                            num_chunks);
+                                            num_phases, num_chunks);
 
         bool verbose = false;
         // prepare transfers according to transfer_plan
@@ -480,15 +498,7 @@ public:
             context->sync_hard();
 
         for (size_t p = 0; p < num_phases; ++p) {
-            execute_phase(transfers.phases[p], srcs, dsts);
-
-            if (p < num_phases-1) {
-                // swap srcs and dsts for next phase
-                srcs.swap(dsts);
-
-                // mandatory sync between phases
-                context->sync_all_streams();
-            }
+            execute_phase(transfers.phases[p], srcs, dsts, bufs);
         }
 
         return true;
