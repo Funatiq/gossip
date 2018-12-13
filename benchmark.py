@@ -13,9 +13,26 @@ def valid(output):
     return True
 
 sizes = [2**exp for exp in range(12, 30)]
+#sizes = [2**exp for exp in range(29, 30)]
+
 repeats = 10
-file_suffix = 'benchmark/ps0001_general'
+
+plan = sys.argv[1]
+
+if os.environ.get('SLURM_JOB_ID') is not None:
+    job_id = os.environ["SLURM_JOB_ID"]
+else:
+    job_id = ''
+
+
+plan_dir = "plans/"
+out_dir = "benchmark/"
+
 exe = "./general"
+
+subprocess.call(["cp", plan_dir + plan + "/all2all_plan.json", "."])
+subprocess.call(["cp", plan_dir + plan + "/scatter_plan.json", "."])
+subprocess.call(["cp", plan_dir + plan + "/gather_plan.json", "."])
 
 for i, s in enumerate(sizes):
     print("PROGRESS: " + str(i+1) + "/" + str(len(sizes)))
@@ -50,9 +67,13 @@ for i, s in enumerate(sizes):
         scatter_csv += '\n'
         gather_csv += '\n'
 
-with open("all2all_" + file_suffix + ".csv", "w+") as f:
+with open(out_dir + "all2all_" + plan + job_id + ".csv", "w+") as f:
         f.write(all2all_csv)
-with open("scatter_" + file_suffix + ".csv", "w+") as f:
+with open(out_dir + "scatter_" + plan + job_id + ".csv", "w+") as f:
         f.write(scatter_csv)
-with open("gather_" + file_suffix + ".csv", "w+") as f:
+with open(out_dir + "gather_" + plan + job_id + ".csv", "w+") as f:
         f.write(gather_csv)
+
+subprocess.call(["rm", "all2all_plan.json"])
+subprocess.call(["rm", "scatter_plan.json"])
+subprocess.call(["rm", "gather_plan.json"])
