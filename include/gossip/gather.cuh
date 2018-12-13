@@ -86,7 +86,7 @@ public:
     }
 
     gather_t (
-        const context_t<> * context_,
+        const context_t<>* context_,
         const gather_plan_t<>& transfer_plan_)
         : context(context_),
           external_context (true),
@@ -238,9 +238,10 @@ private:
                 const gpu_id_t final_trg = sequence.back();
 
                 for (size_t phase = 0; phase < num_phases; ++phase) {
+                    // schedule transfer only if device changes
                     if (sequence[phase] != sequence[phase+1]) {
                         if (sequence[phase+1] != final_trg) {
-                            // tranfer to auxiliary memory
+                            // transfer to auxiliary memory
                             trg_offset = &aux_offsets[sequence[phase+1]];
                             // create event after transfer for synchronization
                             event_after = new cudaEvent_t();
@@ -250,7 +251,7 @@ private:
                             events.push_back(event_after);
                         }
                         else {
-                            // tranfer to final memory position
+                            // transfer to final memory position
                             trg_offset = &trg_offsets[sequence.front()];
                             // final transfer does not need follow up event
                             event_after = nullptr;

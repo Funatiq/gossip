@@ -184,6 +184,11 @@ private:
             num_chunks(num_chunks_)
         {}
 
+        ~transfer_handler() {
+            for(auto& e : events)
+                cudaEventDestroy(*e);
+        }
+
         bool push_back(
             const std::vector<gpu_id_t>& sequence,
             const size_t chunks = 1,
@@ -238,10 +243,10 @@ private:
                 for (size_t phase = 0; phase < num_phases; ++phase) {
                     const gpu_id_t src = sequence[phase];
                     const gpu_id_t trg = sequence[phase+1];
-                    // schedule tranfer only if device changes
+                    // schedule transfer only if device changes
                     if (src != trg) {
                         if (trg != final_trg) {
-                            // tranfer to auxiliary memory
+                            // transfer to auxiliary memory
                             trg_offset = &aux_offsets[trg];
                             // create event after transfer for synchronization
                             event_after = new cudaEvent_t();
@@ -251,7 +256,7 @@ private:
                             events.push_back(event_after);
                         }
                         else {
-                            // tranfer to final memory position
+                            // transfer to final memory position
                             trg_offset = &trg_offsets[sequence.front()][sequence.back()];
                             // final transfer does not need follow up event
                             event_after = nullptr;
