@@ -1,8 +1,5 @@
 # pragma once
 
-#include <cstdint>
-#include <stdexcept>
-
 #include "cudahelpers/cuda_helpers.cuh"
 
 #include "gossip/config.h"

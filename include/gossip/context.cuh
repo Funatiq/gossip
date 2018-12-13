@@ -2,7 +2,9 @@
 
 #include <vector>
 #include <numeric>
+#include <stdexcept>
 
+#include "../cudahelpers/cuda_helpers.cuh"
 #include "config.h"
 
 namespace gossip {
@@ -48,8 +50,8 @@ public:
                     "Invalid number of device ids.");
         }
 
-        num_gpus = device_ids_.size();  
-        
+        num_gpus = device_ids_.size();
+
         device_ids = device_ids_;
 
         initialize();
@@ -60,7 +62,7 @@ private:
         if(!valid) return;
 
         streams.resize(num_gpus, std::vector<cudaStream_t>(num_gpus));
-        
+
         // create num_gpus^2 streams where streams[gpu*num_gpus+part]
         // denotes the stream to be used for GPU gpu and partition part
         for (gpu_id_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
@@ -126,7 +128,7 @@ private:
             }
         } CUERR
     }
-    
+
 public:
     ~context_t () {
 
