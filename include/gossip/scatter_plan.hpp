@@ -4,132 +4,60 @@
 #include <iostream>
 
 #include "transfer_plan.hpp"
+#include "utils.hpp"
 
 namespace gossip {
 
-template<
-    bool throw_exceptions=true>
-class scatter_plan_t : public transfer_plan_t<throw_exceptions> {
+ void verify_scatter_plan(transfer_plan_t& plan) {
+    bool valid = true;
 
-    gpu_id_t source;
+    valid &= check(plan.main_gpu() != gpu_id_t(-1),
+                   "main gpu not set in plan.");
 
-public:
-    scatter_plan_t(const gpu_id_t source_,
-                   const gpu_id_t num_gpus_,
-                   const std::vector<std::vector<gpu_id_t>>& transfer_sequences_ = {})
-                   : transfer_plan_t<throw_exceptions>(num_gpus_, transfer_sequences_),
-                     source(source_)
-    {
-        initialize();
+    valid &= check(plan.num_steps() >= 1,
+                   "planned sequence must be at least of length 2.");
+
+    for (const auto& sequence : plan.transfer_sequences())
+        valid &= check(sequence.seq.size() == plan.num_steps()+1,
+                       "planned sequences must have same lengths.");
+
+    for (const auto& sequence : plan.transfer_sequences()) {
+        valid &= check(sequence.seq.front() == plan.main_gpu(),
+                       "all sequences must have same source.");
     }
 
-    scatter_plan_t(const gpu_id_t source_,
-                   const gpu_id_t num_gpus_,
-                   const std::vector<std::vector<gpu_id_t>>& transfer_sequences_,
-                   const size_t num_chunks_,
-                   const std::vector<size_t>& transfer_sizes_)
-                   : transfer_plan_t<throw_exceptions>(num_gpus_, transfer_sequences_,
-                                                       num_chunks_, transfer_sizes_),
-                     source(source_)
-    {
-        initialize();
+    std::vector<size_t> completeness(plan.num_gpus());
+    // sum up all chunks for each target gpu
+    for (const auto& sequence : plan.transfer_sequences()) {
+        completeness[sequence.seq.back()] += sequence.size;
+    }
+    for (gpu_id_t trg = 0; trg < plan.num_gpus(); ++trg) {
+        valid &= check(completeness[trg] == plan.num_chunks(),
+                       "transfer plan is incomplete.");
     }
 
-private:
-    void initialize() {
-        if(this->num_gpus >= 2) {
-            if(this->transfer_sequences.empty()) load_default_plan();
-            this->num_steps = this->transfer_sequences[0].size()-1;
-            this->synchronized = false;
-            // trim_plan();
-            this->valid = verify_plan();
-        }
+    if(valid)
+        plan.validate();
+ }
+
+transfer_plan_t default_scatter_plan(const gpu_id_t num_gpus, const gpu_id_t source) {
+
+    std::vector<std::vector<gpu_id_t> > sequences;
+
+    sequences.reserve(num_gpus);
+
+    // plan direct transfers from source to trg gpu
+    for (gpu_id_t trg = 0; trg < num_gpus; ++trg) {
+        sequences.emplace_back(std::vector<gpu_id_t>{source,trg});
     }
 
-    void load_default_plan() override {
-        this->num_steps = 1;
-        this->num_chunks = 1;
+    transfer_plan_t plan(num_gpus, sequences);
 
-        this->transfer_sequences.clear();
-        this->transfer_sequences.reserve(this->num_gpus);
+    plan.main_gpu(source);
 
-        // plan direct transfers from source to trg gpu
-        for (gpu_id_t trg = 0; trg < this->num_gpus; ++trg) {
-            this->transfer_sequences.emplace_back(std::vector<gpu_id_t>{source,trg});
-        }
-    }
+    verify_scatter_plan(plan);
 
-    void trim_plan() {
-        for (auto& sequence : this->transfer_sequences) {
-            // auto seq_len = sequence.size();
-            auto target = gpu_id_t(-1);
-            for (auto it = sequence.rbegin(); it < sequence.rend(); ++it) {
-                // trim trailing -1
-                if(target == gpu_id_t(-1))
-                    target = *it;
-                // trim trailing items == target
-                else if(target != *it) {
-                    sequence.resize((sequence.rend() - it) + 1);
-                    break;
-                }
-            }
-        }
-    }
-
-    bool verify_plan() const override {
-        if (this->num_steps < 1)
-            if (throw_exceptions)
-                throw std::invalid_argument(
-                    "planned sequence must be at least of length 2.");
-            else return false;
-
-        for (const auto& sequence : this->transfer_sequences)
-            if (sequence.size() != this->num_steps+1)
-                if (throw_exceptions)
-                    throw std::invalid_argument(
-                        "planned sequences must have same lengths.");
-                else return false;
-
-        for (const auto& sequence : this->transfer_sequences) {
-            if (sequence.front() != source)
-                if (throw_exceptions)
-                    throw std::invalid_argument(
-                        "all sequences must have same source.");
-                else return false;
-        }
-
-        std::vector<size_t> completeness(this->num_gpus);
-        if (this->num_chunks <= 1) {
-            for (const auto& sequence : this->transfer_sequences) {
-                completeness[sequence.back()] += 1;
-            }
-        }
-        else {
-            if (this->transfer_sequences.size() != this->transfer_sizes.size())
-                if (throw_exceptions)
-                    throw std::invalid_argument(
-                        "number of sequences must match number of sizes.");
-                else return false;
-           for (size_t i = 0; i < this->transfer_sequences.size(); ++i) {
-                completeness[this->transfer_sequences[i].back()]
-                    += this->transfer_sizes[i];
-            }           
-        }
-        for (gpu_id_t trg = 0; trg < this->num_gpus; ++trg) {
-            if (completeness[trg] != this->num_chunks)
-                if (throw_exceptions)
-                    throw std::invalid_argument(
-                        "transfer plan is incomplete.");
-                else return false;
-        }
-
-        return true;
-    }
-
-public:
-    gpu_id_t get_main_gpu() const noexcept {
-        return source;
-    }
-};
+    return plan;
+}
 
 } // namespace
