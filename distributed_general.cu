@@ -88,6 +88,30 @@ void scatter_gather(const size_t batch_size, const size_t batch_size_secure) {
     }
 }
 
+template<typename data_t>
+void broadcaster(const size_t batch_size, const size_t batch_size_secure) {
+
+    auto transfer_plan = parse_plan("broadcast_plan.json");
+    gossip::broadcast::verify_plan(transfer_plan);
+
+    auto num_gpus = transfer_plan.num_gpus();
+
+    if(transfer_plan.valid()) {
+        // transfer_plan.show_plan();
+
+        auto context = std::make_unique< gossip::context_t<> >(num_gpus);
+        auto broadcast = std::make_unique< gossip::broadcast_t<> >(context.get(), transfer_plan);
+        auto multisplit = std::make_unique< gossip::multisplit_t<> >(context.get());
+        auto point2point = std::make_unique< gossip::point2point_t<> >(context.get());
+
+        run_multisplit_broadcast<data_t>(
+            context.get(), point2point.get(), multisplit.get(), broadcast.get(),
+            batch_size, batch_size_secure);
+
+        context->sync_hard();
+    }
+}
+
 int main () {
     using data_t = uint64_t;
 
@@ -105,4 +129,6 @@ int main () {
     std::cout << "scatter and gather" << std::endl;
     scatter_gather<data_t>(batch_size, batch_size_secure);
 
+    std::cout << "broadcast" << std::endl;
+    broadcaster<data_t>(batch_size, batch_size_secure);
 }
