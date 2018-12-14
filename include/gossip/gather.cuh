@@ -28,7 +28,7 @@ public:
     {
         context = new context_t<>(num_gpus_);
 
-        transfer_plan = default_gather_plan(num_gpus_, main_gpu_);
+        transfer_plan = gather::default_plan(num_gpus_, main_gpu_);
 
         plan_valid = transfer_plan.valid();
     }
@@ -42,7 +42,7 @@ public:
         context = new context_t<>(num_gpus_);
 
         if(!transfer_plan.valid())
-            verify_gather_plan(transfer_plan);
+            gather::verify_plan(transfer_plan);
 
         plan_valid = (get_num_devices() == transfer_plan.num_gpus()) &&
                      transfer_plan.valid();
@@ -55,7 +55,7 @@ public:
     {
         context = new context_t<>(device_ids_);
 
-        transfer_plan = default_gather_plan(device_ids_.size(), main_gpu_);
+        transfer_plan = gather::default_plan(device_ids_.size(), main_gpu_);
 
         plan_valid = transfer_plan.valid();
     }
@@ -69,7 +69,7 @@ public:
         context = new context_t<>(device_ids_);
 
         if(!transfer_plan.valid())
-            verify_gather_plan(transfer_plan);
+            gather::verify_plan(transfer_plan);
 
         plan_valid = (get_num_devices() == transfer_plan.num_gpus()) &&
                      transfer_plan.valid();
@@ -87,7 +87,7 @@ public:
                     "You have to pass a valid context!"
                 );
 
-        transfer_plan = default_gather_plan(get_num_devices(), main_gpu_);
+        transfer_plan = gather::default_plan(get_num_devices(), main_gpu_);
 
         plan_valid = transfer_plan.valid();
     }
@@ -106,7 +106,7 @@ public:
                 );
 
         if(!transfer_plan.valid())
-            verify_gather_plan(transfer_plan);
+            gather::verify_plan(transfer_plan);
 
         plan_valid = (get_num_devices() == transfer_plan.num_gpus()) &&
                      transfer_plan.valid();

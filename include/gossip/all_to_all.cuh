@@ -26,7 +26,7 @@ public:
     {
         context = new context_t<>(num_gpus_);
 
-        transfer_plan = default_all2all_plan(num_gpus_);
+        transfer_plan = all2all::default_plan(num_gpus_);
 
         plan_valid = transfer_plan.valid();
     }
@@ -40,7 +40,7 @@ public:
         context = new context_t<>(num_gpus_);
 
         if(!transfer_plan.valid())
-            verify_all2all_plan(transfer_plan);
+            all2all::verify_plan(transfer_plan);
 
         plan_valid = (get_num_devices() == transfer_plan.num_gpus()) &&
                      transfer_plan.valid();
@@ -52,7 +52,7 @@ public:
     {
         context = new context_t<>(device_ids_);
 
-        transfer_plan = default_all2all_plan(device_ids_.size());
+        transfer_plan = all2all::default_plan(device_ids_.size());
 
         plan_valid = transfer_plan.valid();
     }
@@ -66,7 +66,7 @@ public:
         context = new context_t<>(device_ids_);
 
         if(!transfer_plan.valid())
-            verify_all2all_plan(transfer_plan);
+            all2all::verify_plan(transfer_plan);
 
         plan_valid = (get_num_devices() == transfer_plan.num_gpus()) &&
                      transfer_plan.valid();
@@ -83,7 +83,7 @@ public:
                     "You have to pass a valid context!"
                 );
 
-        transfer_plan = default_all2all_plan(get_num_devices());
+        transfer_plan = all2all::default_plan(get_num_devices());
 
         plan_valid = transfer_plan.valid();
     }
@@ -102,7 +102,7 @@ public:
                 );
 
         if(!transfer_plan.valid())
-            verify_all2all_plan(transfer_plan);
+            all2all::verify_plan(transfer_plan);
 
         plan_valid = (get_num_devices() == transfer_plan.num_gpus()) &&
                      transfer_plan.valid();

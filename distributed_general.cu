@@ -11,7 +11,7 @@ template<typename data_t>
 void all2all(const size_t batch_size, const size_t batch_size_secure) {
 
     auto transfer_plan = parse_plan("all2all_plan.json");
-    verify_all2all_plan(transfer_plan);
+    gossip::all2all::verify_plan(transfer_plan);
 
     auto num_gpus = transfer_plan.num_gpus();
 
@@ -35,7 +35,7 @@ template<typename data_t>
 void all2all_async(const size_t batch_size, const size_t batch_size_secure) {
 
     auto transfer_plan = parse_plan("all2all_plan.json");
-    verify_all2all_plan(transfer_plan);
+    gossip::all2all::verify_plan(transfer_plan);
 
     auto num_gpus = transfer_plan.num_gpus();
 
@@ -59,10 +59,10 @@ template<typename data_t>
 void scatter_gather(const size_t batch_size, const size_t batch_size_secure) {
 
     auto scatter_plan = parse_plan("scatter_plan.json");
-    verify_scatter_plan(scatter_plan);
+    gossip::scatter::verify_plan(scatter_plan);
 
     auto gather_plan = parse_plan("gather_plan.json");
-    verify_gather_plan(gather_plan);
+    gossip::gather::verify_plan(gather_plan);
 
     auto num_gpus = scatter_plan.num_gpus();
     if(num_gpus != gather_plan.num_gpus()) {
