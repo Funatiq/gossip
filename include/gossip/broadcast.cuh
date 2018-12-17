@@ -411,7 +411,7 @@ public:
 
         transfer_handler transfers(context, transfer_plan);
 
-        bool verbose = true;
+        bool verbose = false;
         // prepare transfers according to transfer_plan
         transfers.calculate_offsets(displacements, sendsizes, verbose);
 
