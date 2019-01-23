@@ -25,14 +25,14 @@ else:
     job_id = ''
 
 
-plan_dir = "plans/"
-out_dir = "benchmark/"
+plan_dir = "..plans/"
+out_dir = ""
 
-exe = "./general"
+exe = "../general"
 
-subprocess.call(["cp", plan_dir + plan + "/all2all_plan.json", "."])
-subprocess.call(["cp", plan_dir + plan + "/scatter_plan.json", "."])
-subprocess.call(["cp", plan_dir + plan + "/gather_plan.json", "."])
+subprocess.call(["cp", plan_dir + "/" + plan + "/all2all_plan.json", "."])
+subprocess.call(["cp", plan_dir + "/" + plan + "/scatter_plan.json", "."])
+subprocess.call(["cp", plan_dir + "/" + plan + "/gather_plan.json", "."])
 
 for i, s in enumerate(sizes):
     print("PROGRESS: " + str(i+1) + "/" + str(len(sizes)))
@@ -74,6 +74,6 @@ with open(out_dir + "scatter_" + plan + job_id + ".csv", "w+") as f:
 with open(out_dir + "gather_" + plan + job_id + ".csv", "w+") as f:
         f.write(gather_csv)
 
-subprocess.call(["rm", "all2all_plan.json"])
-subprocess.call(["rm", "scatter_plan.json"])
-subprocess.call(["rm", "gather_plan.json"])
+subprocess.call(["rm", "../all2all_plan.json"])
+subprocess.call(["rm", "../scatter_plan.json"])
+subprocess.call(["rm", "../gather_plan.json"])

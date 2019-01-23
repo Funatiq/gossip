@@ -17,8 +17,9 @@ module load compiler/GCC/6.3.0
 
 cd /home/djuenger/projects/gossip
 
-
-time python benchmark.py dgx1_opt
-time python benchmark.py dgx1_direct
-time python benchmark.py dgx1_rings
-time python benchmark.py dgx1_symm
+#time python benchmark.py dgx1_symm
+#time python benchmark.py dgx1_opt
+time python benchmark.py dgx1_opt_1chunk
+#time python benchmark.py dgx1_direct
+#time python benchmark.py dgx1_rings
+#time python benchmark.py dgx1_symm

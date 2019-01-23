@@ -5,6 +5,34 @@
 #include <cstdlib>
 #include "../include/cudahelpers/cuda_helpers.cuh"
 
+template<class T>
+GLOBALQUALIFIER
+void memcpy_kernel(T* src, T* dst, std::uint64_t size)
+{
+    const auto gid = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if(gid == 0)
+    {
+        memcpy(dst, src, size*sizeof(T));
+    }
+}
+
+template<class T, std::uint64_t ChunkSize = 1>
+GLOBALQUALIFIER
+void memcpy2_kernel(T* src, T* dst, std::uint64_t size)
+{
+    const auto gid = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if(gid < SDIV(size, ChunkSize))
+    {
+        #pragma unroll ChunkSize
+        for(uint64_t i = 0; i < ChunkSize; i++)
+        {
+            dst[gid*ChunkSize+i] = src[gid*ChunkSize+i];
+        }  
+    }
+}
+
 template <typename It>
 void print(It begin, It end)
 {
@@ -78,7 +106,6 @@ int main (int argc, char *argv[])
     for(index_t i = 11; i < 34; i++)
     {
         sizes.push_back(1ULL << i);
-        //std::cout << sizes.back() << std::endl;
     }
     
     index_t max_size = index_t(*std::max_element(sizes.begin(), sizes.end()));
@@ -104,52 +131,13 @@ int main (int argc, char *argv[])
     cudaDeviceEnablePeerAccess(src_id, 0); CUERR
     cudaMalloc(&dst_ptr, sizeof(data_t)*max_size); CUERR
 
-    // timer resolution
-    cudaSetDevice(src_id); CUERR
-    for(index_t i = 0; i < repeats; i++)
-    {
-        cudaSetDevice(src_id); CUERR
-        cudaEventRecord(start);
-        cudaEventRecord(stop);
-        cudaEventSynchronize(stop);
-        cudaEventElapsedTime(&(timings[i]), start, stop); CUERR
-    }
-    //std::cout << "timer resolution" << std::endl;
-    //print_csv(timings.begin(), timings.end());
-    //print_statistic(timings.begin(), timings.end());
-
-    // call latency
-    cudaSetDevice(src_id); CUERR
-    for(index_t i = 0; i < repeats; i++)
-    {
-        cudaEventRecord(start);
-        cudaMemcpy(src_ptr, dst_ptr, 0, D2D);
-        cudaEventRecord(stop);
-        cudaEventSynchronize(stop);
-        cudaEventElapsedTime(&(timings[i]), start, stop); CUERR
-    }
-    //std::cout << "call latencies" << std::endl;
-    //print_csv(timings.begin(), timings.end());
-    //print_statistic(timings.begin(), timings.end());
-
-    // memcpy latency
-    cudaSetDevice(src_id); CUERR
-    for(index_t i = 0; i < repeats; i++)
-    {
-        cudaEventRecord(start);
-        cudaMemcpy(src_ptr, dst_ptr, sizeof(data_t), D2D);
-        cudaEventRecord(stop);
-        cudaEventSynchronize(stop);
-        cudaEventElapsedTime(&(timings[i]), start, stop); CUERR
-    }
-    //std::cout << "memcpy latencies" << std::endl;
-    //print_csv(timings.begin(), timings.end());
-    //print_statistic(timings.begin(), timings.end());
+    static constexpr std::uint64_t chunk_size = 8;
 
     // memcpy bandwidth
     cudaSetDevice(src_id); CUERR
     for(auto size : sizes)
     {
+        std::cout << size << " bytes" << std::endl;
         for(index_t i = 0; i < repeats; i++)
         {
             cudaEventRecord(start);
@@ -158,9 +146,38 @@ int main (int argc, char *argv[])
             cudaEventSynchronize(stop);
             cudaEventElapsedTime(&(timings[i]), start, stop); CUERR
         }
-        std::cout << size*sizeof(data_t) << ",";
+        std::cout << "host memcpy" << std::endl;
         print_csv(timings.begin(), timings.end());
-        //print_statistic(timings.begin(), timings.end());
+        print_statistic(timings.begin(), timings.end());
+
+        /*
+        for(index_t i = 0; i < repeats; i++)
+        {
+            cudaEventRecord(start);
+            memcpy_kernel<<<1, 1>>>(src_ptr, dst_ptr, size);
+            cudaEventRecord(stop);
+            cudaEventSynchronize(stop);
+            cudaEventElapsedTime(&(timings[i]), start, stop); CUERR
+        }
+        std::cout << "device memcpy" << std::endl;
+        print_csv(timings.begin(), timings.end());
+        print_statistic(timings.begin(), timings.end());
+        */
+
+        for(index_t i = 0; i < repeats; i++)
+        {
+            cudaEventRecord(start);
+            memcpy2_kernel<data_t, chunk_size>
+            <<<SDIV(SDIV(size, chunk_size), 1024), 1024>>>(src_ptr, dst_ptr, size);
+            cudaEventRecord(stop);
+            cudaEventSynchronize(stop);
+            cudaEventElapsedTime(&(timings[i]), start, stop); CUERR
+        }
+        std::cout << "threaded device memcpy" << std::endl;
+        print_csv(timings.begin(), timings.end());
+        print_statistic(timings.begin(), timings.end());
+
+        std::cout << std::endl;
     }
 
     // cleanup
