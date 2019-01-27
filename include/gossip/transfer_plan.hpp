@@ -67,7 +67,7 @@ public:
 
     size_t get_num_steps() const noexcept {
         return num_steps;
-    }   
+    }
 
     size_t get_num_chunks() const noexcept {
         return num_chunks;
@@ -76,7 +76,7 @@ public:
     const std::vector<std::vector<gpu_id_t>>& get_transfer_sequences() const {
         return transfer_sequences;
     }
-    
+
     const std::vector<size_t>& get_transfer_sizes() const {
         return transfer_sizes;
     };

@@ -140,7 +140,7 @@ private:
         std::vector<std::vector<size_t> > phases_offsets;
 
         const std::vector<std::vector<size_t> >& displacements;
-        const std::vector<std::vector<table_t> >& table;
+        const std::vector<std::vector<table_t> >& sizes;
         std::vector<std::vector<size_t> > src_offsets;
 
         size_t num_chunks;
@@ -149,22 +149,18 @@ private:
             const context_t<> * context_,
             const size_t num_phases_,
             const std::vector<std::vector<table_t>>& displacements,
-            const std::vector<std::vector<table_t>>& table,
+            const std::vector<std::vector<table_t>>& sizes,
             const size_t num_chunks_ = 1
         ) :
             num_phases(num_phases_),
             phases(num_phases),
             phases_offsets(num_phases, std::vector<size_t>(context_->get_num_devices())),
             displacements(displacements),
-            table(table),
-            src_offsets(context_->get_num_devices(), std::vector<size_t>(context_->get_num_devices())),
+            sizes(sizes),
+            // src offsets begin at displacements
+            src_offsets(displacements),
             num_chunks(num_chunks_)
-        {
-            for (gpu_id_t gpu = 0; gpu < context_->get_num_devices(); ++gpu) {
-                // src offsets begin at displacements
-                std::copy(displacements[gpu].begin(), displacements[gpu].end()-1, src_offsets[gpu].begin());
-            }
-        }
+        {}
 
         bool push_back(
             const std::vector<gpu_id_t>& sequence,
@@ -177,10 +173,11 @@ private:
                 else return false;
 
             const size_t offset = src_offsets[sequence.front()][sequence.back()];
-            const size_t size_per_chunk = SDIV(table[sequence.front()][sequence.back()], num_chunks);
+            const size_t size_per_chunk = SDIV(sizes[sequence.front()][sequence.back()], num_chunks);
             size_t transfer_size = size_per_chunk * chunks;
             // check bounds
-            const size_t limit = displacements[sequence.front()][sequence.back()] + table[sequence.front()][sequence.back()];
+            const size_t limit = displacements[sequence.front()][sequence.back()]
+                               + sizes[sequence.front()][sequence.back()];
             if (offset + transfer_size > limit)
                 transfer_size = limit - offset;
 
@@ -303,6 +300,8 @@ public:
         const std::vector<index_t  >& srcs_lens,        // src_len[k] is length of src[k]
         std::vector<value_t *>& dsts,                   // dst[k] resides on device_ids[k]
         const std::vector<index_t  >& dsts_lens,        // dst_len[k] is length of dst[k]
+        std::vector<value_t *>& bufs,
+        const std::vector<index_t  >& bufs_lens,
         const std::vector<std::vector<table_t> >& table // [src_gpu, partition]
     ) const {
         if (!plan_valid) return false;

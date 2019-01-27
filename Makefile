@@ -7,6 +7,7 @@ HEADERS = include/gossip.cuh \
 		  include/gossip/auxiliary.cuh \
 		  include/gossip/context.cuh \
 		  include/gossip/all_to_all.cuh \
+		  include/gossip/all_to_all_async.cuh \
 		  include/gossip/scatter.cuh \
 		  include/gossip/gather.cuh \
 		  include/gossip/memory_manager.cuh \
