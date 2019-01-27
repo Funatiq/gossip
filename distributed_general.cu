@@ -96,10 +96,13 @@ int main (int argc, char *argv[]) {
 
     size_t batch_size_secure = batch_size * security_factor;
 
+    std::cout << "RUN: all2all" << std::endl;
     all2all<data_t>(batch_size, batch_size_secure);
 
+    std::cout << "RUN: all2all_async" << std::endl;
     all2all_async<data_t>(batch_size, batch_size_secure);
 
+    std::cout << "RUN: scatter_gather" << std::endl;
     scatter_gather<data_t>(batch_size, batch_size_secure);
 
 }
