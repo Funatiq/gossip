@@ -14,7 +14,7 @@ def valid(output):
 
 sizes = [2**exp for exp in range(12, 31)]
 
-repeats = 1
+repeats = 5
 
 plan = sys.argv[1]
 
