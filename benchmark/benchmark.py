@@ -13,7 +13,7 @@ def valid(output):
             return False
     return True
 
-sizes = [2**exp for exp in range(12, 30)]
+sizes = [2**exp for exp in range(12, 29)]
 #sizes = [2**exp for exp in range(29, 30)]
 repeats = 5
 
