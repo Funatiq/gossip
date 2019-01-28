@@ -212,11 +212,11 @@ void run_multisplit_scatter_gather(
         T3* multisplit,
         T4* scatter,
         T5* gather,
+        gpu_id_t main_gpu,
         const size_t batch_size,
         const size_t batch_size_secure)
 {
     gpu_id_t num_gpus = context->get_num_devices();
-    gpu_id_t main_gpu = 0;
 
     std::vector<data_t *> ying(num_gpus);
     std::vector<data_t *> yang(num_gpus);

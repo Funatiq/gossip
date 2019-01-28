@@ -66,7 +66,13 @@ void scatter_gather(const size_t batch_size, const size_t batch_size_secure) {
 
     auto num_gpus = scatter_plan.num_gpus();
     if(num_gpus != gather_plan.num_gpus()) {
-        std::cout << "scatter and gather do not match" << std::endl;
+        std::cout << "scatter and gather num_gpus does not match" << std::endl;
+        return;
+    }
+
+    auto main_gpu = scatter_plan.main_gpu();
+    if(main_gpu != gather_plan.main_gpu()) {
+        std::cout << "scatter and gather main_gpu does not match" << std::endl;
         return;
     }
 
@@ -82,6 +88,7 @@ void scatter_gather(const size_t batch_size, const size_t batch_size_secure) {
 
         run_multisplit_scatter_gather<data_t>(
             context.get(), point2point.get(), multisplit.get(), scatter.get(), gather.get(),
+            main_gpu,
             batch_size, batch_size_secure);
 
         context->sync_hard();
