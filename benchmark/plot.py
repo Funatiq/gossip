@@ -27,7 +27,8 @@ xs, ys = [], []
 
 for filename in filenames:
     xs, ys = csv_to_trace(filename, np.median)
-    label = filename.split('/')[-1].split('.')[0]
+    print(filename)
+    label = filename.split('.')[0]
     ax.plot(xs, bandwidth(xs, ys), label=label)
     ax.scatter(xs, bandwidth(xs, ys), marker='+')
 
