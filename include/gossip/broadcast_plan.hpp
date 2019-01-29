@@ -8,7 +8,7 @@
 
 namespace gossip {
 
-class gather {
+class broadcast {
 
 public:
     static void verify_plan(transfer_plan_t& plan) {
@@ -25,14 +25,14 @@ public:
                         "planned sequences must have same lengths.");
 
         for (const auto& sequence : plan.transfer_sequences()) {
-            valid &= check(sequence.seq.back() == plan.main_gpu(),
-                        "all sequences must have same target.");
+            valid &= check(sequence.seq.front() == plan.main_gpu(),
+                        "all sequences must have same source.");
         }
 
         std::vector<size_t> completeness(plan.num_gpus());
-        // sum up all chunks for each source gpu
+        // sum up all chunks for each target gpu
         for (const auto& sequence : plan.transfer_sequences()) {
-            completeness[sequence.seq.front()] += sequence.size;
+            completeness[sequence.seq.back()] += 1;
         }
         for (gpu_id_t trg = 0; trg < plan.num_gpus(); ++trg) {
             valid &= check(completeness[trg] == plan.num_chunks(),
@@ -43,20 +43,23 @@ public:
             plan.validate();
     }
 
-    static transfer_plan_t default_plan(const gpu_id_t num_gpus, const gpu_id_t target) {
+    static transfer_plan_t default_plan(const gpu_id_t num_gpus, const gpu_id_t source) {
 
         std::vector<std::vector<gpu_id_t> > sequences;
 
         sequences.reserve(num_gpus);
 
-        // plan direct transfers from src to target gpu
-        for (gpu_id_t src = 0; src < num_gpus; ++src) {
-            sequences.emplace_back(std::vector<gpu_id_t>{src,target});
+        // plan direct transfers from source to trg gpu
+        for (gpu_id_t trg = 0; trg < num_gpus; ++trg) {
+            sequences.emplace_back(std::vector<gpu_id_t>{source,trg});
         }
 
-        transfer_plan_t plan(num_gpus, sequences);
+        const size_t num_chunks = 1;
+        const std::vector<size_t> chunks(num_gpus, 0);
 
-        plan.main_gpu(target);
+        transfer_plan_t plan(num_gpus, sequences, num_chunks, chunks);
+
+        plan.main_gpu(source);
 
         verify_plan(plan);
 

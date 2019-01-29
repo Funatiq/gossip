@@ -8,6 +8,7 @@ HEADERS = include/gossip.cuh \
 		  include/gossip/context.cuh \
 		  include/gossip/all_to_all.cuh \
 		  include/gossip/all_to_all_async.cuh \
+		  include/gossip/broadcast.cuh \
 		  include/gossip/scatter.cuh \
 		  include/gossip/gather.cuh \
 		  include/gossip/memory_manager.cuh \
@@ -15,6 +16,7 @@ HEADERS = include/gossip.cuh \
 		  include/gossip/point_to_point.cuh \
 		  include/gossip/transfer_plan.hpp \
 		  include/gossip/all_to_all_plan.hpp \
+		  include/gossip/broadcast_plan.hpp \
 		  include/gossip/scatter_plan.hpp \
 		  include/gossip/gather_plan.hpp
 

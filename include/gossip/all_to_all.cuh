@@ -13,65 +13,69 @@ template<
     bool throw_exceptions=true>
 class all2all_t {
 
-protected:
     const context_t<> * context;
-private:
     bool external_context;
 
-    const all2all_plan_t<> transfer_plan;
-
+    transfer_plan_t transfer_plan;
     bool plan_valid;
 
 public:
     all2all_t (
         const gpu_id_t num_gpus_)
-        : external_context (false),
-          transfer_plan(num_gpus_)
+        : external_context (false)
     {
         context = new context_t<>(num_gpus_);
 
-        plan_valid = transfer_plan.is_valid();
+        transfer_plan = all2all::default_plan(num_gpus_);
+
+        plan_valid = transfer_plan.valid();
     }
 
     all2all_t (
         const gpu_id_t num_gpus_,
-        const all2all_plan_t<>& transfer_plan_)
+        const transfer_plan_t& transfer_plan_)
         : external_context (false),
           transfer_plan(transfer_plan_)
     {
         context = new context_t<>(num_gpus_);
 
-        plan_valid = (get_num_devices() == transfer_plan.get_num_gpus()) &&
-                     transfer_plan.is_valid();
+        if(!transfer_plan.valid())
+            all2all::verify_plan(transfer_plan);
+
+        plan_valid = (get_num_devices() == transfer_plan.num_gpus()) &&
+                     transfer_plan.valid();
     }
 
     all2all_t (
         const std::vector<gpu_id_t>& device_ids_)
-        : external_context (false),
-          transfer_plan(device_ids_.size())
+        : external_context (false)
     {
         context = new context_t<>(device_ids_);
 
-        plan_valid = transfer_plan.is_valid();
+        transfer_plan = all2all::default_plan(device_ids_.size());
+
+        plan_valid = transfer_plan.valid();
     }
 
     all2all_t (
         const std::vector<gpu_id_t>& device_ids_,
-        const all2all_plan_t<>& transfer_plan_)
+        const transfer_plan_t& transfer_plan_)
         : external_context (false),
           transfer_plan(transfer_plan_)
     {
         context = new context_t<>(device_ids_);
 
-        plan_valid = (get_num_devices() == transfer_plan.get_num_gpus()) &&
-                     transfer_plan.is_valid();
+        if(!transfer_plan.valid())
+            all2all::verify_plan(transfer_plan);
+
+        plan_valid = (get_num_devices() == transfer_plan.num_gpus()) &&
+                     transfer_plan.valid();
     }
 
      all2all_t (
         const context_t<> * context_)
         : context(context_),
-          external_context (true),
-          transfer_plan(get_num_devices())
+          external_context (true)
     {
         if (throw_exceptions)
             if (!context->is_valid())
@@ -79,12 +83,14 @@ public:
                     "You have to pass a valid context!"
                 );
 
-        plan_valid = transfer_plan.is_valid();
+        transfer_plan = all2all::default_plan(get_num_devices());
+
+        plan_valid = transfer_plan.valid();
     }
 
     all2all_t (
         const context_t<> * context_,
-        const all2all_plan_t<>& transfer_plan_)
+        const transfer_plan_t& transfer_plan_)
         : context(context_),
           external_context (true),
           transfer_plan(transfer_plan_)
@@ -95,8 +101,11 @@ public:
                     "You have to pass a valid context!"
                 );
 
-        plan_valid = (get_num_devices() == transfer_plan.get_num_gpus()) &&
-                     transfer_plan.is_valid();
+        if(!transfer_plan.valid())
+            all2all::verify_plan(transfer_plan);
+
+        plan_valid = (get_num_devices() == transfer_plan.num_gpus()) &&
+                     transfer_plan.valid();
     }
 
     ~all2all_t () {
@@ -338,8 +347,8 @@ public:
                         "table size does not match number of gpus.");
                 else return false;
 
-        const auto num_phases = transfer_plan.get_num_steps();
-        const auto num_chunks = transfer_plan.get_num_chunks();
+        const auto num_phases = transfer_plan.num_steps();
+        const auto num_chunks = transfer_plan.num_chunks();
 
         std::vector<std::vector<size_t> > displacements(get_num_devices(), std::vector<size_t>(get_num_devices()+1));
         // horizontal scan to get initial offsets
@@ -354,16 +363,8 @@ public:
                                             num_chunks);
 
         // prepare transfers according to transfer_plan
-        if (num_chunks > 1) {
-            for (size_t i = 0; i < transfer_plan.get_transfer_sequences().size(); ++i) {
-                transfers.push_back(transfer_plan.get_transfer_sequences()[i],
-                                    transfer_plan.get_transfer_sizes()[i]);
-            }
-        }
-        else {
-             for (const auto& sequence : transfer_plan.get_transfer_sequences()) {
-                transfers.push_back(sequence);
-            }
+        for (const auto& sequence : transfer_plan.transfer_sequences()) {
+            transfers.push_back(sequence.seq, sequence.size);
         }
 
         for (size_t p = 0; p < num_phases; ++p) {

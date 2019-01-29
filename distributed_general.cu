@@ -10,11 +10,12 @@
 template<typename data_t>
 void all2all(const size_t batch_size, const size_t batch_size_secure) {
 
-    auto transfer_plan = parse_all2all_plan("all2all_plan.json");
+    auto transfer_plan = parse_plan("all2all_plan.json");
+    gossip::all2all::verify_plan(transfer_plan);
 
-    auto num_gpus = transfer_plan.get_num_gpus();
+    auto num_gpus = transfer_plan.num_gpus();
 
-    if(transfer_plan.is_valid()) {
+    if(transfer_plan.valid()) {
         // transfer_plan.show_plan();
 
         auto context = std::make_unique< gossip::context_t<> >(num_gpus);
@@ -33,11 +34,12 @@ void all2all(const size_t batch_size, const size_t batch_size_secure) {
 template<typename data_t>
 void all2all_async(const size_t batch_size, const size_t batch_size_secure) {
 
-    auto transfer_plan = parse_all2all_plan("all2all_plan.json");
+    auto transfer_plan = parse_plan("all2all_plan.json");
+    gossip::all2all::verify_plan(transfer_plan);
 
-    auto num_gpus = transfer_plan.get_num_gpus();
+    auto num_gpus = transfer_plan.num_gpus();
 
-    if(transfer_plan.is_valid()) {
+    if(transfer_plan.valid()) {
         // transfer_plan.show_plan();
 
         auto context = std::make_unique< gossip::context_t<> >(num_gpus);
@@ -56,16 +58,25 @@ void all2all_async(const size_t batch_size, const size_t batch_size_secure) {
 template<typename data_t>
 void scatter_gather(const size_t batch_size, const size_t batch_size_secure) {
 
-    auto scatter_plan = parse_scatter_plan("scatter_plan.json");
-    auto gather_plan = parse_gather_plan("gather_plan.json");
+    auto scatter_plan = parse_plan("scatter_plan.json");
+    gossip::scatter::verify_plan(scatter_plan);
 
-    auto num_gpus = scatter_plan.get_num_gpus();
-    if(num_gpus != gather_plan.get_num_gpus()) {
-        std::cout << "scatter and gather do not match" << std::endl;
+    auto gather_plan = parse_plan("gather_plan.json");
+    gossip::gather::verify_plan(gather_plan);
+
+    auto num_gpus = scatter_plan.num_gpus();
+    if(num_gpus != gather_plan.num_gpus()) {
+        std::cout << "scatter and gather num_gpus does not match" << std::endl;
         return;
     }
 
-    if(scatter_plan.is_valid() && gather_plan.is_valid()) {
+    auto main_gpu = scatter_plan.main_gpu();
+    if(main_gpu != gather_plan.main_gpu()) {
+        std::cout << "scatter and gather main_gpu does not match" << std::endl;
+        return;
+    }
+
+    if(scatter_plan.valid() && gather_plan.valid()) {
         // scatter_plan.show_plan();
         // gather_plan.show_plan();
 
@@ -77,6 +88,31 @@ void scatter_gather(const size_t batch_size, const size_t batch_size_secure) {
 
         run_multisplit_scatter_gather<data_t>(
             context.get(), point2point.get(), multisplit.get(), scatter.get(), gather.get(),
+            main_gpu,
+            batch_size, batch_size_secure);
+
+        context->sync_hard();
+    }
+}
+
+template<typename data_t>
+void broadcaster(const size_t batch_size, const size_t batch_size_secure) {
+
+    auto transfer_plan = parse_plan("broadcast_plan.json");
+    gossip::broadcast::verify_plan(transfer_plan);
+
+    auto num_gpus = transfer_plan.num_gpus();
+
+    if(transfer_plan.valid()) {
+        // transfer_plan.show_plan();
+
+        auto context = std::make_unique< gossip::context_t<> >(num_gpus);
+        auto broadcast = std::make_unique< gossip::broadcast_t<> >(context.get(), transfer_plan);
+        auto multisplit = std::make_unique< gossip::multisplit_t<> >(context.get());
+        auto point2point = std::make_unique< gossip::point2point_t<> >(context.get());
+
+        run_multisplit_broadcast<data_t>(
+            context.get(), point2point.get(), multisplit.get(), broadcast.get(),
             batch_size, batch_size_secure);
 
         context->sync_hard();
@@ -105,4 +141,6 @@ int main (int argc, char *argv[]) {
     std::cout << "RUN: scatter_gather" << std::endl;
     scatter_gather<data_t>(batch_size, batch_size_secure);
 
+    std::cout << "broadcast" << std::endl;
+    broadcaster<data_t>(batch_size, batch_size_secure);
 }

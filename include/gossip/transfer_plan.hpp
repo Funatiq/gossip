@@ -7,97 +7,134 @@
 
 namespace gossip {
 
-template<
-    bool throw_exceptions=true>
 class transfer_plan_t {
 
-protected:
-    gpu_id_t num_gpus;
-    size_t num_steps;
-    std::vector<std::vector<gpu_id_t>> transfer_sequences;
-
-    size_t num_chunks;
-    std::vector<size_t> transfer_sizes;
-
-    bool synchronized;
-    bool valid;
-
-public:
-    transfer_plan_t(const gpu_id_t num_gpus_,
-                    const std::vector<std::vector<gpu_id_t>>& transfer_sequences_ = {})
-                    : num_gpus(num_gpus_),
-                      num_steps(0),
-                      transfer_sequences(transfer_sequences_),
-                      num_chunks(1),
-                      transfer_sizes(num_gpus, num_chunks),
-                      synchronized(false),
-                      valid(false)
-    {}
-
-    transfer_plan_t(const gpu_id_t num_gpus_,
-                    const std::vector<std::vector<gpu_id_t>>& transfer_sequences_,
-                    const size_t num_chunks_,
-                    const std::vector<size_t>& transfer_sizes_)
-                    : num_gpus(num_gpus_),
-                      num_steps(0),
-                      transfer_sequences(transfer_sequences_),
-                      num_chunks(num_chunks_),
-                      transfer_sizes(transfer_sizes_),
-                      synchronized(false),
-                      valid(false)
-    {}
-
-private:
-    virtual void load_default_plan() = 0;
-
-    virtual bool verify_plan() const = 0;
-
-public:
-    bool is_valid() const noexcept {
-        return valid;
-    }
-
-    bool is_synchronized() const noexcept {
-        return synchronized;
-    }
-
-    gpu_id_t get_num_gpus() const noexcept {
-        return num_gpus;
-    }
-
-    size_t get_num_steps() const noexcept {
-        return num_steps;
-    }
-
-    size_t get_num_chunks() const noexcept {
-        return num_chunks;
-    }
-
-    const std::vector<std::vector<gpu_id_t>>& get_transfer_sequences() const {
-        return transfer_sequences;
-    }
-
-    const std::vector<size_t>& get_transfer_sizes() const {
-        return transfer_sizes;
+    struct transfer_sequence {
+        std::vector<gpu_id_t> seq;
+        size_t size;
     };
 
+    gpu_id_t num_gpus_;
+    gpu_id_t main_gpu_;
+    size_t num_steps_;
+    size_t num_chunks_;
+    std::vector<transfer_sequence> transfer_sequences_;
+    std::vector<size_t> sync_steps_;
+    bool valid_;
+
+public:
+    transfer_plan_t(
+        const gpu_id_t num_gpus,
+        const std::vector<std::vector<gpu_id_t>>& sequences
+    ) :
+        num_gpus_(num_gpus),
+        main_gpu_(gpu_id_t(-1)),
+        num_steps_(0),
+        num_chunks_(1),
+        valid_(false)
+    {
+        if(sequences.size())
+            num_steps_ = sequences[0].size()-1;
+        transfer_sequences_.reserve(sequences.size());
+        for(const auto& sequence : sequences)
+            transfer_sequences_.push_back({sequence, 1});
+    }
+
+    transfer_plan_t(
+        const gpu_id_t num_gpus,
+        const std::vector<std::vector<gpu_id_t>>& sequences,
+        const size_t num_chunks,
+        const std::vector<size_t>& transfer_sizes
+    ) :
+        num_gpus_(num_gpus),
+        main_gpu_(gpu_id_t(-1)),
+        num_steps_(0),
+        num_chunks_(num_chunks),
+        valid_(false)
+    {
+        if(sequences.size() == transfer_sizes.size()) {
+            if(sequences.size())
+                num_steps_ = sequences[0].size()-1;
+
+            transfer_sequences_.reserve(sequences.size());
+
+            for(size_t i = 0; i < sequences.size(); ++i)
+                transfer_sequences_.push_back({sequences[i], transfer_sizes[i]});
+        }
+    }
+
+public:
+    gpu_id_t num_gpus() const noexcept {
+        return num_gpus_;
+    }
+
+    gpu_id_t main_gpu() const noexcept {
+        return main_gpu_;
+    }
+
+    void main_gpu(const gpu_id_t gpu) {
+        main_gpu_ = gpu;
+    }
+
+    size_t num_steps() const noexcept {
+        return num_steps_;
+    }
+
+    size_t num_chunks() const noexcept {
+        return num_chunks_;
+    }
+
+    const std::vector<transfer_sequence>& transfer_sequences() const {
+        return transfer_sequences_;
+    }
+
+    const std::vector<size_t>& sync_steps() {
+        return sync_steps_;
+    }
+
+    void sync_steps(const std::vector<size_t>& steps) {
+        sync_steps_ = steps;
+    }
+
+    bool synchronized() const noexcept {
+        return sync_steps_.size() > 0;
+    }
+
+    bool valid() const noexcept {
+        return valid_;
+    }
+
+    void validate() {
+        valid_ = true;
+    }
+
+    void invalidate() {
+        valid_ = false;
+    }
+
     void show_plan() const {
-        if(!valid)
+        if(!valid_)
             std::cout << "WARNING: invalid plan\n";
 
-        std::cout << "Transfer plan for " << int(num_gpus) << " gpus\n";
-        std::cout << "Transfer " << num_chunks << " chunks";
-        if(synchronized)
-            std::cout << " in " << num_steps << " synchronized steps:\n";
-        else
-            std::cout << " asynchronously:\n";
+        std::cout << "Transfer plan for " << uint32_t(num_gpus_) << " gpus\n";
+        std::cout << "Transfer " << uint32_t(num_chunks_) << " chunks in " << num_steps_ << " steps\n";
 
-        for (size_t i = 0; i < transfer_sequences.size(); ++i) {
+        if(synchronized()) {
+            std::cout << "Synchronize after steps ";
+            for(const auto& s : sync_steps_)
+                std::cout << s << ' ';
+            std::cout << '\n';
+        }
+        else {
+            std::cout << "Without synchronization\n";
+        }
+
+        for (const auto& sequence : transfer_sequences_) {
             std::cout << "\tTransfer "
-                      << ((num_chunks <= 1) ? 1 : transfer_sizes[i])
+                      << sequence.size
                       << " chunks via [";
-            for(const auto& item : transfer_sequences[i])
-                std::cout << int(item) << ' ';
+            for(const auto& item : sequence.seq)
+                std::cout << uint32_t(item) << ' ';
             std::cout << "]\n";
         }
         std::cout << std::endl;
