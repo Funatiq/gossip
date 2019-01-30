@@ -141,6 +141,6 @@ int main (int argc, char *argv[]) {
     std::cout << "RUN: scatter_gather" << std::endl;
     scatter_gather<data_t>(batch_size, batch_size_secure);
 
-    std::cout << "broadcast" << std::endl;
-    broadcaster<data_t>(batch_size, batch_size_secure);
+    //std::cout << "broadcast" << std::endl;
+    //broadcaster<data_t>(batch_size, batch_size_secure);
 }
