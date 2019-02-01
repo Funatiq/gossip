@@ -7,6 +7,8 @@
 
 #include "include/plan_parser.hpp"
 
+auto context = std::make_unique< gossip::context_t<> >(4);
+
 template<typename data_t>
 void all2all(const size_t batch_size, const size_t batch_size_secure) {
 
@@ -18,7 +20,7 @@ void all2all(const size_t batch_size, const size_t batch_size_secure) {
     if(transfer_plan.valid()) {
         // transfer_plan.show_plan();
 
-        auto context = std::make_unique< gossip::context_t<> >(num_gpus);
+        //auto context = std::make_unique< gossip::context_t<> >(num_gpus);
         auto all2all = std::make_unique< gossip::all2all_t<> >(context.get(), transfer_plan);
         auto multisplit = std::make_unique< gossip::multisplit_t<> >(context.get());
         auto point2point = std::make_unique< gossip::point2point_t<> >(context.get());
@@ -42,7 +44,7 @@ void all2all_async(const size_t batch_size, const size_t batch_size_secure) {
     if(transfer_plan.valid()) {
         // transfer_plan.show_plan();
 
-        auto context = std::make_unique< gossip::context_t<> >(num_gpus);
+        //auto context = std::make_unique< gossip::context_t<> >(num_gpus);
         auto all2all = std::make_unique< gossip::all2all_async_t<> >(context.get(), transfer_plan);
         auto multisplit = std::make_unique< gossip::multisplit_t<> >(context.get());
         auto point2point = std::make_unique< gossip::point2point_t<> >(context.get());
@@ -80,7 +82,7 @@ void scatter_gather(const size_t batch_size, const size_t batch_size_secure) {
         // scatter_plan.show_plan();
         // gather_plan.show_plan();
 
-        auto context = std::make_unique< gossip::context_t<> >(num_gpus);
+        //auto context = std::make_unique< gossip::context_t<> >(num_gpus);
         auto point2point = std::make_unique< gossip::point2point_t<> >(context.get());
         auto multisplit = std::make_unique< gossip::multisplit_t<> >(context.get());
         auto scatter = std::make_unique< gossip::scatter_t<> >(context.get(), scatter_plan);
