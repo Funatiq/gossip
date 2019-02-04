@@ -1,0 +1,29 @@
+dgx1_all2all
+	results/dgx1/all2all_async/direct.csv peak troughput: 57 GB/s
+	results/dgx1/all2all_async/rings.csv peak troughput: 523 GB/s
+	results/dgx1/all2all_async/opt_1chunk.csv peak troughput: 468 GB/s
+	results/dgx1/all2all_async/opt.csv peak troughput: 526 GB/s
+	results/dgx1/all2all/opt.csv peak troughput: 477 GB/s
+dgx1_scatter
+	results/dgx1/scatter/direct.csv peak troughput: 29 GB/s
+	results/dgx1/scatter/rings.csv peak troughput: 148 GB/s
+	results/dgx1/scatter/opt_1chunk.csv peak troughput: 116 GB/s
+	results/dgx1/scatter/opt.csv peak troughput: 148 GB/s
+p100_quad_all2all
+	results/p100_quad/all2all_async/direct.csv peak troughput: 262 GB/s
+	results/p100_quad/all2all_async/rings.csv peak troughput: 260 GB/s
+	results/p100_quad/all2all_async/opt.csv peak troughput: 262 GB/s
+p100_quad_scatter
+	results/p100_quad/scatter/direct.csv peak troughput: 68 GB/s
+	results/p100_quad/scatter/rings.csv peak troughput: 88 GB/s
+	results/p100_quad/scatter/opt.csv peak troughput: 88 GB/s
+dgx1_quad_all2all
+	results/dgx1_quad/all2all_async/direct_p100.csv peak troughput: 344 GB/s
+	results/dgx1_quad/all2all_async/rings_p100.csv peak troughput: 344 GB/s
+	results/dgx1_quad/all2all_async/opt_p100.csv peak troughput: 427 GB/s
+	results/dgx1_quad/all2all/opt_p100.csv peak troughput: 344 GB/s
+dgx1_quad_scatter
+	results/dgx1_quad/scatter/direct_p100.csv peak troughput: 88 GB/s
+	results/dgx1_quad/scatter/rings_p100.csv peak troughput: 116 GB/s
+	results/dgx1_quad/scatter/opt_p100.csv peak troughput: 116 GB/s
+	results/dgx1_quad/scatter/opt.csv peak troughput: 144 GB/s

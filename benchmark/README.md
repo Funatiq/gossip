@@ -1,0 +1,3 @@
+## Output
+    - .csv file format
+    - <input size (per GPU) in bytes>,<runtime #1 in ms>,<runtime #2 in ms>,...

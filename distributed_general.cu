@@ -7,6 +7,9 @@
 
 #include "include/plan_parser.hpp"
 
+// global context
+//auto context = std::make_unique< gossip::context_t<> >(4);
+
 template<typename data_t>
 void all2all(const size_t batch_size, const size_t batch_size_secure) {
 
@@ -119,23 +122,28 @@ void broadcaster(const size_t batch_size, const size_t batch_size_secure) {
     }
 }
 
-int main () {
+int main (int argc, char *argv[]) {
     using data_t = uint64_t;
 
     double security_factor = 1.5;
 
     size_t batch_size = 1UL << 5;
+    if(argc == 2)
+    {
+        batch_size = std::atoll(argv[1]);
+    }
+
     size_t batch_size_secure = batch_size * security_factor;
 
-    std::cout << "all2all" << std::endl;
+    std::cout << "RUN: all2all" << std::endl;
     all2all<data_t>(batch_size, batch_size_secure);
 
-    std::cout << "all2all async" << std::endl;
+    std::cout << "RUN: all2all_async" << std::endl;
     all2all_async<data_t>(batch_size, batch_size_secure);
 
-    std::cout << "scatter and gather" << std::endl;
+    std::cout << "RUN: scatter_gather" << std::endl;
     scatter_gather<data_t>(batch_size, batch_size_secure);
 
-    std::cout << "broadcast" << std::endl;
-    broadcaster<data_t>(batch_size, batch_size_secure);
+    //std::cout << "broadcast" << std::endl;
+    //broadcaster<data_t>(batch_size, batch_size_secure);
 }

@@ -96,7 +96,7 @@ void run_multisplit_all2all(
     CUERR
     TIMERSTOP(zero_gpu_buffers)
 
-    std::cout << "INFO: " << sizeof(data_t)*batch_size*num_gpus << " bytes" << std::endl;
+    std::cout << "INFO: " << sizeof(data_t)*batch_size*num_gpus << " bytes (all2all)" << std::endl;
 
     TIMERSTART(malloc_host)
     data_t * data_h = nullptr;
@@ -247,7 +247,7 @@ void run_multisplit_scatter_gather(
     CUERR
     TIMERSTOP(zero_gpu_buffers)
 
-    std::cout << "INFO: " << sizeof(data_t)*batch_size << " bytes" << std::endl;
+    std::cout << "INFO: " << sizeof(data_t)*batch_size << " bytes (scatter/gather)" << std::endl;
 
     TIMERSTART(malloc_host)
     data_t * data_h = nullptr;
