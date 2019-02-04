@@ -263,46 +263,43 @@ private:
         ) {
             std::vector<size_t> src_offsets(src_displacements);
 
+            // on main gpu: direct transfer (copy) in first step
+            {
+                const gpu_id_t src = transfer_plan.main_gpu();
+                const gpu_id_t trg = transfer_plan.main_gpu();
+                const size_t index = src * num_gpus() + trg;
+
+                const size_t step = 0;
+                const size_t transfer_size = src_displacements.back();
+                transfers[step][index]->set_pos(0, 0, transfer_size);
+
+                if (verbose) transfers[step][index]->show(src, trg);
+            }
+
+            // other gpus: transfer according to sequence
             for(const auto& sequence : transfer_plan.transfer_sequences()) {
-                size_t chunk_id = sequence.size;
-
-                size_t* src_offset = &src_offsets[chunk_id];
-                size_t transfer_size = sizes[chunk_id] ;
-
-                size_t* trg_offset = src_offset;
 
                 if (verbose)
                     std::cout << "transfer from " << int(sequence.seq.front())
                               << " to " << int(sequence.seq.back())
                               << std::endl;
 
-                const gpu_id_t final_trg = sequence.seq.back();
-
-                if (sequence.seq.front() == final_trg) { // src == trg
-                    // direct transfer (copy) in first step
-                    const gpu_id_t src = final_trg;
-                    const gpu_id_t trg = final_trg;
-
-                    const size_t index = src * num_gpus() + trg;
-
-                    const size_t step = 0;
-                    transfer_size += transfers[step][index]->len;
-                    transfers[step][index]->set_pos(0, 0, transfer_size);
-
-                    if (verbose) transfers[step][index]->show(src, trg);
-                }
-                else { // src != trg
+                if (sequence.seq.front() != sequence.seq.back()) {
+                    const size_t chunk_id = sequence.size;
+                    const size_t src_offset = src_offsets[chunk_id];
+                    const size_t trg_offset = src_offset;
+                    const size_t transfer_size = sizes[chunk_id];
 
                     for(size_t step = 0; step < num_steps(); ++step) {
                         const gpu_id_t src = sequence.seq[step];
                         const gpu_id_t trg = sequence.seq[step+1];
 
-                        // create transfer only if device changes
+                        // transfer only if device changes
                         if(src != trg) {
                             const size_t index = src * num_gpus() + trg;
 
                             if(transfers[step][index]->len == 0) {
-                                transfers[step][index]->set_pos(*src_offset, *trg_offset, transfer_size);
+                                transfers[step][index]->set_pos(src_offset, trg_offset, transfer_size);
                             }
                             if (verbose) transfers[step][index]->show(src, trg);
                         }
