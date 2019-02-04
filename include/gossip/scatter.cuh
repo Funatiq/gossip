@@ -151,12 +151,14 @@ private:
             event_after(event_after)
         {}
 
-        void show() {
+        void show() const {
             std::cout <<   "src:" << int(src_gpu)
                       << ", pos:" << src_pos
                       << ", trg:" << int(trg_gpu)
                       << ", pos:" << trg_pos
                       << ", len:" << len
+                      << ", event before:" << (event_before ? event_before : 0)
+                      << ", event after:" << (event_after ? event_after : 0)
                       << std::endl;
         }
     };
@@ -296,12 +298,7 @@ private:
 
     void show_phase(const std::vector<transfer>& transfers) const {
         for(const transfer& t : transfers) {
-            std::cout <<   "src:" << int(t.src_gpu)
-                      << ", pos:" << t.src_pos
-                      << ", trg:" << int(t.trg_gpu)
-                      << ", pos:" << t.trg_pos
-                      << ", len:" << t.len
-                      << std::endl;
+            t.show();
         }
     }
 
