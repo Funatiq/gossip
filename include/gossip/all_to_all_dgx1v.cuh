@@ -22,25 +22,18 @@ class all2all_dgx1v_t : public all2all_t {
     static constexpr gpu_id_t num_gpus = 8;
 
 public:
-    all2all_dgx1v_t ()
-        : all2all_t(num_gpus, dgx1v::default_plan)
-    {}
-
     all2all_dgx1v_t (
-        const transfer_plan_t& transfer_plan_)
-        : all2all_t(num_gpus, transfer_plan_)
-    {}
-
-    all2all_dgx1v_t (
-        context_t * context_)
+        const context_t& context_
+    )
         : all2all_t(context_, dgx1v::default_plan)
     {
         check_context();
     }
 
     all2all_dgx1v_t (
-        context_t * context_,
-        const transfer_plan_t& transfer_plan_)
+        const context_t& context_,
+        const transfer_plan_t& transfer_plan_
+    )
         : all2all_t(context_, transfer_plan_)
     {
         check_context();

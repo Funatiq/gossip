@@ -53,46 +53,41 @@ template<
     class T3,
     class T4>
 void run_multisplit_all2all(
-        T1* context,
-        T2* all2all,
-        T3* multisplit,
-        T4* point2point,
+        T1& context,
+        T2& all2all,
+        T3& multisplit,
+        T4& point2point,
         const size_t batch_size,
         const size_t batch_size_secure)
 {
-    gpu_id_t num_gpus = context->get_num_devices();
+    gpu_id_t num_gpus = context.get_num_devices();
 
     std::vector<data_t *> ying(num_gpus);
     std::vector<data_t *> yang(num_gpus);
-    std::vector<data_t *> yong(num_gpus);
 
     TIMERSTART(malloc_devices)
     for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
-        cudaSetDevice(context->get_device_id(gpu));
+        cudaSetDevice(context.get_device_id(gpu));
         cudaMalloc(&ying[gpu], sizeof(data_t)*batch_size_secure);
         cudaMalloc(&yang[gpu], sizeof(data_t)*batch_size_secure);
-        cudaMalloc(&yong[gpu], sizeof(data_t)*batch_size_secure);
     } CUERR
-    context->sync_hard();
+    context.sync_hard();
     TIMERSTOP(malloc_devices)
 
-    context->sync_all_streams();
+    context.sync_all_streams();
 
     TIMERSTART(zero_gpu_buffers)
     const data_t init_data = 0;
     for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu){
-        cudaSetDevice(context->get_device_id(gpu));
+        cudaSetDevice(context.get_device_id(gpu));
         memset_kernel<<<256, 1024, 0,
-            context->get_streams(gpu)[0 % num_gpus]>>>
+            context.get_streams(gpu)[0 % num_gpus]>>>
             (ying[gpu], batch_size_secure, init_data);
         memset_kernel<<<256, 1024, 0,
-            context->get_streams(gpu)[1 % num_gpus]>>>
+            context.get_streams(gpu)[1 % num_gpus]>>>
             (yang[gpu], batch_size_secure, init_data);
-        memset_kernel<<<256, 1024, 0,
-            context->get_streams(gpu)[1 % num_gpus]>>>
-            (yong[gpu], batch_size_secure, init_data);
     }
-    context->sync_all_streams();
+    context.sync_all_streams();
     CUERR
     TIMERSTOP(zero_gpu_buffers)
 
@@ -109,7 +104,7 @@ void run_multisplit_all2all(
         data_h[i] = fmix64(i+1);
     TIMERSTOP(init_host_data)
 
-    // this array partitions the widthcontext->get_device_id(gpu) many elements into
+    // this array partitions the widthcontext.get_device_id(gpu) many elements into
     // num_gpus many portions of approximately equal size
     std::vector<data_t *> srcs(num_gpus);
     std::vector<data_t *> dsts(num_gpus);
@@ -126,8 +121,8 @@ void run_multisplit_all2all(
 
     TIMERSTART(H2D_async)
     // move batches to buffer ying
-    point2point->execH2DAsync(srcs, dsts, lens);
-    point2point->sync();
+    point2point.execH2DAsync(srcs, dsts, lens);
+    point2point.sync();
     TIMERSTOP(H2D_async)
 
     // perform multisplit on each device
@@ -141,8 +136,156 @@ void run_multisplit_all2all(
 
     std::vector<std::vector<size_t>> table(num_gpus, std::vector<size_t>(num_gpus));
     TIMERSTART(multisplit)
-    multisplit->execAsync(srcs, lens, dsts, lens, table, part_hash);
-    multisplit->sync();
+    multisplit.execAsync(srcs, lens, dsts, lens, table, part_hash);
+    multisplit.sync();
+    TIMERSTOP(multisplit)
+
+    std::cout << std::endl << "Partition Table:" << std::endl;
+    for (gpu_id_t src = 0; src < num_gpus; src++)
+        for (gpu_id_t trg = 0; trg < num_gpus; trg++)
+            std::cout << table[src][trg] << (trg+1 == num_gpus ? "\n" : " ");
+    std::cout << std::endl;
+
+    // perform all to all communication
+    std::vector<size_t> srcs_lens(num_gpus);
+    std::vector<size_t> dsts_lens(num_gpus);
+    for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
+        srcs_lens[gpu] = batch_size_secure;
+        dsts_lens[gpu] = batch_size_secure;
+        srcs[gpu] = yang[gpu];
+        dsts[gpu] = ying[gpu];
+    }
+
+    // all2all.show_plan();
+
+    TIMERSTART(all2all)
+    all2all.execAsync(srcs, srcs_lens, dsts, dsts_lens, table);
+    all2all.sync();
+    TIMERSTOP(all2all)
+
+    TIMERSTART(validate)
+    std::vector<size_t> lengths(num_gpus);
+    for (gpu_id_t trg = 0; trg < num_gpus; trg++) {
+        lengths[trg] = 0;
+        for (gpu_id_t src = 0; src < num_gpus; src++)
+            lengths[trg] += table[src][trg];
+    }
+
+    for (gpu_id_t gpu = 0; gpu < num_gpus; gpu++) {
+        cudaSetDevice(context.get_device_id(gpu));
+        validate<<<256, 1024, 0, context.get_streams(gpu)[0]>>>
+            (dsts[gpu], lengths[gpu], gpu+1, part_hash);
+    }
+    CUERR
+    TIMERSTOP(validate)
+
+    context.sync_hard();
+    for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
+        cudaSetDevice(context.get_device_id(gpu)); CUERR
+        cudaFree(ying[gpu]);        CUERR
+        cudaFree(yang[gpu]);        CUERR
+    } CUERR
+
+    cudaFreeHost(data_h);           CUERR
+}
+
+template<
+    typename data_t,
+    class T1,
+    class T2,
+    class T3,
+    class T4>
+void run_multisplit_all2all_async(
+        T1& context,
+        T2& all2all,
+        T3& multisplit,
+        T4& point2point,
+        const size_t batch_size,
+        const size_t batch_size_secure)
+{
+    gpu_id_t num_gpus = context.get_num_devices();
+
+    std::vector<data_t *> ying(num_gpus);
+    std::vector<data_t *> yang(num_gpus);
+    std::vector<data_t *> yong(num_gpus);
+
+    TIMERSTART(malloc_devices)
+    for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
+        cudaSetDevice(context.get_device_id(gpu));
+        cudaMalloc(&ying[gpu], sizeof(data_t)*batch_size_secure);
+        cudaMalloc(&yang[gpu], sizeof(data_t)*batch_size_secure);
+        cudaMalloc(&yong[gpu], sizeof(data_t)*batch_size_secure);
+    } CUERR
+    context.sync_hard();
+    TIMERSTOP(malloc_devices)
+
+    context.sync_all_streams();
+
+    TIMERSTART(zero_gpu_buffers)
+    const data_t init_data = 0;
+    for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu){
+        cudaSetDevice(context.get_device_id(gpu));
+        memset_kernel<<<256, 1024, 0,
+            context.get_streams(gpu)[0 % num_gpus]>>>
+            (ying[gpu], batch_size_secure, init_data);
+        memset_kernel<<<256, 1024, 0,
+            context.get_streams(gpu)[1 % num_gpus]>>>
+            (yang[gpu], batch_size_secure, init_data);
+        memset_kernel<<<256, 1024, 0,
+            context.get_streams(gpu)[1 % num_gpus]>>>
+            (yong[gpu], batch_size_secure, init_data);
+    }
+    context.sync_all_streams();
+    CUERR
+    TIMERSTOP(zero_gpu_buffers)
+
+    std::cout << "INFO: " << sizeof(data_t)*batch_size*num_gpus << " bytes (all2all)" << std::endl;
+
+    TIMERSTART(malloc_host)
+    data_t * data_h = nullptr;
+    cudaMallocHost(&data_h, sizeof(data_t)*batch_size*num_gpus); CUERR
+    TIMERSTOP(malloc_host)
+
+    TIMERSTART(init_host_data)
+    # pragma omp parallel for
+    for (size_t i = 0; i < batch_size*num_gpus; i++)
+        data_h[i] = fmix64(i+1);
+    TIMERSTOP(init_host_data)
+
+    // this array partitions the widthcontext.get_device_id(gpu) many elements into
+    // num_gpus many portions of approximately equal size
+    std::vector<data_t *> srcs(num_gpus);
+    std::vector<data_t *> dsts(num_gpus);
+    std::vector<size_t  > lens(num_gpus);
+
+    for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
+        const size_t lower = gpu*batch_size;
+        const size_t upper = lower+batch_size;
+
+        srcs[gpu] = data_h+lower;
+        dsts[gpu] = ying[gpu];
+        lens[gpu] = upper-lower;
+    }
+
+    TIMERSTART(H2D_async)
+    // move batches to buffer ying
+    point2point.execH2DAsync(srcs, dsts, lens);
+    point2point.sync();
+    TIMERSTOP(H2D_async)
+
+    // perform multisplit on each device
+    for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
+        srcs[gpu] = ying[gpu];
+        dsts[gpu] = yang[gpu];
+    }
+    auto part_hash = [=] DEVICEQUALIFIER (const data_t& x){
+        return (x % num_gpus) + 1;
+    };
+
+    std::vector<std::vector<size_t>> table(num_gpus, std::vector<size_t>(num_gpus));
+    TIMERSTART(multisplit)
+    multisplit.execAsync(srcs, lens, dsts, lens, table, part_hash);
+    multisplit.sync();
     TIMERSTOP(multisplit)
 
     std::cout << std::endl << "Partition Table:" << std::endl;
@@ -165,11 +308,11 @@ void run_multisplit_all2all(
         bufs[gpu] = yong[gpu];
     }
 
-    // all2all->show_plan();
+    // all2all.show_plan();
 
     TIMERSTART(all2all)
-    all2all->execAsync(srcs, srcs_lens, dsts, dsts_lens, bufs, bufs_lens, table);
-    all2all->sync();
+    all2all.execAsync(srcs, srcs_lens, dsts, dsts_lens, bufs, bufs_lens, table);
+    all2all.sync();
     TIMERSTOP(all2all)
 
     TIMERSTART(validate)
@@ -181,16 +324,16 @@ void run_multisplit_all2all(
     }
 
     for (gpu_id_t gpu = 0; gpu < num_gpus; gpu++) {
-        cudaSetDevice(context->get_device_id(gpu));
-        validate<<<256, 1024, 0, context->get_streams(gpu)[0]>>>
+        cudaSetDevice(context.get_device_id(gpu));
+        validate<<<256, 1024, 0, context.get_streams(gpu)[0]>>>
             (dsts[gpu], lengths[gpu], gpu+1, part_hash);
     }
     CUERR
     TIMERSTOP(validate)
 
-    context->sync_hard();
+    context.sync_hard();
     for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
-        cudaSetDevice(context->get_device_id(gpu)); CUERR
+        cudaSetDevice(context.get_device_id(gpu)); CUERR
         cudaFree(ying[gpu]);        CUERR
         cudaFree(yang[gpu]);        CUERR
         cudaFree(yong[gpu]);        CUERR
@@ -207,43 +350,43 @@ template<
     class T4,
     class T5>
 void run_multisplit_scatter_gather(
-        T1* context,
-        T2* point2point,
-        T3* multisplit,
-        T4* scatter,
-        T5* gather,
+        T1& context,
+        T2& point2point,
+        T3& multisplit,
+        T4& scatter,
+        T5& gather,
         gpu_id_t main_gpu,
         const size_t batch_size,
         const size_t batch_size_secure)
 {
-    gpu_id_t num_gpus = context->get_num_devices();
+    gpu_id_t num_gpus = context.get_num_devices();
 
     std::vector<data_t *> ying(num_gpus);
     std::vector<data_t *> yang(num_gpus);
 
     TIMERSTART(malloc_devices)
     for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
-        cudaSetDevice(context->get_device_id(gpu));
+        cudaSetDevice(context.get_device_id(gpu));
         cudaMalloc(&ying[gpu], sizeof(data_t)*batch_size_secure);
         cudaMalloc(&yang[gpu], sizeof(data_t)*batch_size_secure);
     } CUERR
-    context->sync_hard();
+    context.sync_hard();
     TIMERSTOP(malloc_devices)
 
-    context->sync_all_streams();
+    context.sync_all_streams();
 
     TIMERSTART(zero_gpu_buffers)
     const data_t init_data = 0;
     for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu){
-        cudaSetDevice(context->get_device_id(gpu));
+        cudaSetDevice(context.get_device_id(gpu));
         memset_kernel<<<256, 1024, 0,
-            context->get_streams(gpu)[0 % num_gpus]>>>
+            context.get_streams(gpu)[0 % num_gpus]>>>
             (ying[gpu], batch_size_secure, init_data);
         memset_kernel<<<256, 1024, 0,
-            context->get_streams(gpu)[1 % num_gpus]>>>
+            context.get_streams(gpu)[1 % num_gpus]>>>
             (yang[gpu], batch_size_secure, init_data);
     }
-    context->sync_all_streams();
+    context.sync_all_streams();
     CUERR
     TIMERSTOP(zero_gpu_buffers)
 
@@ -275,8 +418,8 @@ void run_multisplit_scatter_gather(
 
     TIMERSTART(H2D_async)
     // move batches to buffer ying
-    point2point->execH2DAsync(srcs, dsts, lens);
-    point2point->sync();
+    point2point.execH2DAsync(srcs, dsts, lens);
+    point2point.sync();
     TIMERSTOP(H2D_async)
 
 
@@ -291,8 +434,8 @@ void run_multisplit_scatter_gather(
 
     std::vector<std::vector<size_t>> table(num_gpus, std::vector<size_t>(num_gpus));
     TIMERSTART(multisplit)
-    multisplit->execAsync(srcs, lens, dsts, lens, table, part_hash);
-    multisplit->sync();
+    multisplit.execAsync(srcs, lens, dsts, lens, table, part_hash);
+    multisplit.sync();
     TIMERSTOP(multisplit)
 
     std::cout << std::endl << "Partition Table:" << std::endl;
@@ -310,20 +453,20 @@ void run_multisplit_scatter_gather(
         mems_lens[gpu] = batch_size_secure;
     }
 
-    // scatter->show_plan();
+    // scatter.show_plan();
 
     TIMERSTART(scatter)
-    scatter->execAsync(srcs[main_gpu], batch_size_secure, table[main_gpu], dsts, mems_lens);
-    scatter->sync();
+    scatter.execAsync(srcs[main_gpu], batch_size_secure, table[main_gpu], dsts, mems_lens);
+    scatter.sync();
     TIMERSTOP(scatter)
 
     TIMERSTART(validate_scatter)
     for (gpu_id_t gpu = 0; gpu < num_gpus; gpu++) {
-        cudaSetDevice(context->get_device_id(gpu));
-        validate<<<256, 1024, 0, context->get_streams(gpu)[0]>>>
+        cudaSetDevice(context.get_device_id(gpu));
+        validate<<<256, 1024, 0, context.get_streams(gpu)[0]>>>
             (dsts[gpu], table[main_gpu][gpu], gpu+1, part_hash);
     }
-    context->sync_hard();
+    context.sync_hard();
     CUERR
     TIMERSTOP(validate_scatter)
 
@@ -333,12 +476,12 @@ void run_multisplit_scatter_gather(
     TIMERSTART(clear_gpu_buffers)
     const data_t clear_data = data_t(-1);
     for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu){
-        cudaSetDevice(context->get_device_id(gpu));
+        cudaSetDevice(context.get_device_id(gpu));
         memset_kernel<<<256, 1024, 0,
-            context->get_streams(gpu)[0 % num_gpus]>>>
+            context.get_streams(gpu)[0 % num_gpus]>>>
             (srcs[gpu], batch_size_secure, clear_data);
     }
-    context->sync_all_streams();
+    context.sync_all_streams();
     CUERR
     TIMERSTOP(clear_gpu_buffers)
 
@@ -349,11 +492,11 @@ void run_multisplit_scatter_gather(
         dsts[gpu] = yang[gpu];
     }
 
-    // gather->show_plan();
+    // gather.show_plan();
 
     TIMERSTART(gather)
-    gather->execAsync(srcs, mems_lens, table[main_gpu], dsts[main_gpu], batch_size_secure);
-    gather->sync();
+    gather.execAsync(srcs, mems_lens, table[main_gpu], dsts[main_gpu], batch_size_secure);
+    gather.sync();
     TIMERSTOP(gather)
 
     TIMERSTART(validate_gather)
@@ -362,18 +505,18 @@ void run_multisplit_scatter_gather(
         mems2[trg] = mems2[trg-1] + table[main_gpu][trg-1];
     }
 
-    cudaSetDevice(context->get_device_id(main_gpu));
+    cudaSetDevice(context.get_device_id(main_gpu));
     for (gpu_id_t gpu = 0; gpu < num_gpus; gpu++) {
-        validate<<<256, 1024, 0, context->get_streams(main_gpu)[0]>>>
+        validate<<<256, 1024, 0, context.get_streams(main_gpu)[0]>>>
             (mems2[gpu], table[main_gpu][gpu], gpu+1, part_hash);
     }
-    context->sync_hard();
+    context.sync_hard();
     CUERR
     TIMERSTOP(validate_gather)
 
-    context->sync_hard();
+    context.sync_hard();
     for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
-        cudaSetDevice(context->get_device_id(gpu)); CUERR
+        cudaSetDevice(context.get_device_id(gpu)); CUERR
         cudaFree(ying[gpu]);        CUERR
         cudaFree(yang[gpu]);        CUERR
     } CUERR
@@ -388,14 +531,14 @@ template<
     class T3,
     class T4>
 void run_multisplit_broadcast(
-        T1* context,
-        T2* point2point,
-        T3* multisplit,
-        T4* broadcast,
+        T1& context,
+        T2& point2point,
+        T3& multisplit,
+        T4& broadcast,
         const size_t batch_size,
         const size_t batch_size_secure)
 {
-    gpu_id_t num_gpus = context->get_num_devices();
+    gpu_id_t num_gpus = context.get_num_devices();
     gpu_id_t main_gpu = 0;
 
     std::vector<data_t *> ying(num_gpus);
@@ -403,27 +546,27 @@ void run_multisplit_broadcast(
 
     TIMERSTART(malloc_devices)
     for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
-        cudaSetDevice(context->get_device_id(gpu));
+        cudaSetDevice(context.get_device_id(gpu));
         cudaMalloc(&ying[gpu], sizeof(data_t)*batch_size_secure);
         cudaMalloc(&yang[gpu], sizeof(data_t)*batch_size_secure);
     } CUERR
-    context->sync_hard();
+    context.sync_hard();
     TIMERSTOP(malloc_devices)
 
-    context->sync_all_streams();
+    context.sync_all_streams();
 
     TIMERSTART(zero_gpu_buffers)
     const data_t init_data = 0;
     for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu){
-        cudaSetDevice(context->get_device_id(gpu));
+        cudaSetDevice(context.get_device_id(gpu));
         memset_kernel<<<256, 1024, 0,
-            context->get_streams(gpu)[0 % num_gpus]>>>
+            context.get_streams(gpu)[0 % num_gpus]>>>
             (ying[gpu], batch_size_secure, init_data);
         memset_kernel<<<256, 1024, 0,
-            context->get_streams(gpu)[1 % num_gpus]>>>
+            context.get_streams(gpu)[1 % num_gpus]>>>
             (yang[gpu], batch_size_secure, init_data);
     }
-    context->sync_all_streams();
+    context.sync_all_streams();
     CUERR
     TIMERSTOP(zero_gpu_buffers)
 
@@ -455,8 +598,8 @@ void run_multisplit_broadcast(
 
     TIMERSTART(H2D_async)
     // move batches to buffer ying
-    point2point->execH2DAsync(srcs, dsts, lens);
-    point2point->sync();
+    point2point.execH2DAsync(srcs, dsts, lens);
+    point2point.sync();
     TIMERSTOP(H2D_async)
 
 
@@ -471,8 +614,8 @@ void run_multisplit_broadcast(
 
     std::vector<std::vector<size_t>> table(num_gpus, std::vector<size_t>(num_gpus));
     TIMERSTART(multisplit)
-    multisplit->execAsync(srcs, lens, dsts, lens, table, part_hash);
-    multisplit->sync();
+    multisplit.execAsync(srcs, lens, dsts, lens, table, part_hash);
+    multisplit.sync();
     TIMERSTOP(multisplit)
 
     std::cout << std::endl << "Partition Table:" << std::endl;
@@ -490,15 +633,15 @@ void run_multisplit_broadcast(
         mems_lens[gpu] = batch_size_secure;
     }
 
-    // broadcast->show_plan();
+    // broadcast.show_plan();
 
     size_t total = 0;
     for(auto& t : table[main_gpu])
         total += t;
 
     TIMERSTART(broadcast)
-    broadcast->execAsync(srcs[main_gpu], batch_size_secure, total, dsts, mems_lens);
-    broadcast->sync();
+    broadcast.execAsync(srcs[main_gpu], batch_size_secure, total, dsts, mems_lens);
+    broadcast.sync();
     TIMERSTOP(broadcast)
 
     std::vector<size_t> prefix(num_gpus+1);
@@ -508,20 +651,20 @@ void run_multisplit_broadcast(
 
     TIMERSTART(validate_broadcast)
     for (gpu_id_t gpu = 0; gpu < num_gpus; gpu++) {
-        cudaSetDevice(context->get_device_id(gpu));
+        cudaSetDevice(context.get_device_id(gpu));
         for (gpu_id_t part = 0; part < num_gpus; part++)
-            validate<<<256, 1024, 0, context->get_streams(gpu)[part]>>>
+            validate<<<256, 1024, 0, context.get_streams(gpu)[part]>>>
                 (dsts[gpu]+prefix[part], table[main_gpu][part], part+1, part_hash);
     }
-    context->sync_hard();
+    context.sync_hard();
     CUERR
     TIMERSTOP(validate_broadcast)
 
     std::cout << '\n';
 
-    context->sync_hard();
+    context.sync_hard();
     for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
-        cudaSetDevice(context->get_device_id(gpu)); CUERR
+        cudaSetDevice(context.get_device_id(gpu)); CUERR
         cudaFree(ying[gpu]);        CUERR
         cudaFree(yang[gpu]);        CUERR
     } CUERR

@@ -13,65 +13,15 @@ class broadcast_t {
 
 private:
     const context_t * context;
-    bool external_context;
 
     transfer_plan_t transfer_plan;
     bool plan_valid;
 
 public:
-    broadcast_t (
-        const gpu_id_t num_gpus_,
-        const gpu_id_t main_gpu_)
-        : context( new context_t(num_gpus_) ),
-          external_context (false),
-          transfer_plan( broadcast::default_plan(num_gpus_, main_gpu_) ),
-          plan_valid( transfer_plan.valid() )
-    {}
-
-    broadcast_t (
-        const gpu_id_t num_gpus_,
-        const transfer_plan_t& transfer_plan_)
-        : context( new context_t(num_gpus_) ),
-          external_context(false),
-          transfer_plan(transfer_plan_),
-          plan_valid(false)
-    {
-        if(!transfer_plan.valid())
-            broadcast::verify_plan(transfer_plan);
-
-        plan_valid = (get_num_devices() == transfer_plan.num_gpus()) &&
-                     transfer_plan.valid();
-    }
-
-    broadcast_t (
-        const std::vector<gpu_id_t>& device_ids_,
-        const gpu_id_t main_gpu_)
-        : context( new context_t(device_ids_) ),
-          external_context (false),
-          transfer_plan( broadcast::default_plan(device_ids_.size(), main_gpu_) ),
-          plan_valid( transfer_plan.valid() )
-    {}
-
-    broadcast_t (
-        const std::vector<gpu_id_t>& device_ids_,
-        const transfer_plan_t& transfer_plan_)
-        : context( new context_t(device_ids_) ),
-          external_context (false),
-          transfer_plan(transfer_plan_),
-          plan_valid(false)
-    {
-        if(!transfer_plan.valid())
-            broadcast::verify_plan(transfer_plan);
-
-        plan_valid = (get_num_devices() == transfer_plan.num_gpus()) &&
-                     transfer_plan.valid();
-    }
-
      broadcast_t (
-        const context_t * context_,
+        const context_t& context_,
         const gpu_id_t main_gpu_)
-        : context(context_),
-          external_context (true),
+        : context(&context_),
           transfer_plan( broadcast::default_plan(context->get_num_devices(), main_gpu_) ),
           plan_valid( transfer_plan.valid() )
     {
@@ -80,10 +30,9 @@ public:
     }
 
     broadcast_t (
-        const context_t * context_,
+        const context_t& context_,
         const transfer_plan_t& transfer_plan_)
-        : context(context_),
-          external_context (true),
+        : context(&context_),
           transfer_plan(transfer_plan_),
           plan_valid(false)
     {
@@ -95,11 +44,6 @@ public:
 
         plan_valid = (get_num_devices() == transfer_plan.num_gpus()) &&
                      transfer_plan.valid();
-    }
-
-    ~broadcast_t () {
-        if (!external_context)
-            delete context;
     }
 
     void show_plan() const {
@@ -405,11 +349,6 @@ public:
         //     return false;
         // if (!check_transfers_size(transfers.trg_offsets, transfers.aux_offsets, recvbufs_lens))
         //     return false;
-
-        // syncs with zero stream in order to enforce sequential
-        // consistency with traditional synchronous memcpy calls
-        if (!external_context)
-            context->sync_hard();
 
         transfers.execute_steps(sendbuf, recvbufs);
 

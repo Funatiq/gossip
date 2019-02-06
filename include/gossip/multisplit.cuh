@@ -36,32 +36,11 @@ void binary_split(
 class multisplit_t {
 
     const context_t * context;
-    bool external_context;
     std::vector<cnter_t *> counters_device;
     std::vector<cnter_t *> counters_host;
 
 public:
-
-    multisplit_t (
-        const gpu_id_t num_gpus_)
-        : context( new context_t(num_gpus_) ),
-          external_context (false)
-    {
-        initialize();
-    }
-
-    multisplit_t (
-        const std::vector<gpu_id_t>& device_ids_)
-        : context( new context_t(device_ids_) ),
-          external_context (false)
-    {
-        initialize();
-    }
-
-    multisplit_t (
-        context_t * context_)
-    : context(context_),
-      external_context (true)
+    multisplit_t (const context_t& context_) : context(&context_)
     {
         check(context->is_valid(),
               "You have to pass a valid context!");
@@ -90,9 +69,6 @@ public:
             cudaFreeHost(counters_host[gpu]);
             cudaFree(counters_device[gpu]);
         } CUERR
-
-        if (!external_context)
-            delete context;
     }
 
     template <

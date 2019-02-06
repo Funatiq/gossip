@@ -12,62 +12,14 @@ namespace gossip {
 class all2all_async_t {
 
     const context_t * context;
-    bool external_context;
 
     transfer_plan_t transfer_plan;
     bool plan_valid;
 
 public:
-    all2all_async_t (
-        const gpu_id_t num_gpus_)
-        : context( new context_t(num_gpus_) ),
-          external_context (false),
-          transfer_plan( all2all::default_plan(num_gpus_) ),
-          plan_valid( transfer_plan.valid() )
-    {}
-
-    all2all_async_t (
-        const gpu_id_t num_gpus_,
-        const transfer_plan_t& transfer_plan_)
-        : context( new context_t(num_gpus_) ),
-          external_context(false),
-          transfer_plan(transfer_plan_),
-          plan_valid(false)
-    {
-        if(!transfer_plan.valid())
-            all2all::verify_plan(transfer_plan);
-
-        plan_valid = (get_num_devices() == transfer_plan.num_gpus()) &&
-                     transfer_plan.valid();
-    }
-
-    all2all_async_t (
-        const std::vector<gpu_id_t>& device_ids_)
-        : context( new context_t(device_ids_) ),
-          external_context (false),
-          transfer_plan( all2all::default_plan(device_ids_.size()) ),
-          plan_valid( transfer_plan.valid() )
-    {}
-
-    all2all_async_t (
-        const std::vector<gpu_id_t>& device_ids_,
-        const transfer_plan_t& transfer_plan_)
-        : context( new context_t(device_ids_) ),
-          external_context (false),
-          transfer_plan(transfer_plan_),
-          plan_valid(false)
-    {
-        if(!transfer_plan.valid())
-            all2all::verify_plan(transfer_plan);
-
-        plan_valid = (get_num_devices() == transfer_plan.num_gpus()) &&
-                     transfer_plan.valid();
-    }
-
      all2all_async_t (
-        const context_t * context_)
-        : context(context_),
-          external_context (true),
+        const context_t& context_)
+        : context(&context_),
           transfer_plan( all2all::default_plan(context->get_num_devices()) ),
           plan_valid( transfer_plan.valid() )
     {
@@ -76,10 +28,9 @@ public:
     }
 
     all2all_async_t (
-        const context_t * context_,
+        const context_t& context_,
         const transfer_plan_t& transfer_plan_)
-        : context(context_),
-          external_context (true),
+        : context(&context_),
           transfer_plan(transfer_plan_),
           plan_valid(false)
     {
@@ -91,11 +42,6 @@ public:
 
         plan_valid = (get_num_devices() == transfer_plan.num_gpus()) &&
                      transfer_plan.valid();
-    }
-
-    ~all2all_async_t () {
-        if (!external_context)
-            delete context;
     }
 
 public:
@@ -354,11 +300,6 @@ public:
         // }
         if(!check_size(transfers.aux_offsets, bufs_lens)) return false;
         if(!check_size(transfers.trg_offsets.back(), dsts_lens)) return false;
-
-        // syncs with zero stream in order to enforce sequential
-        // consistency with traditional synchronous memcpy calls
-        if (!external_context)
-            context->sync_hard();
 
         for (size_t p = 0; p < num_phases; ++p) {
             execute_phase(transfers.phases[p], srcs, dsts, bufs);

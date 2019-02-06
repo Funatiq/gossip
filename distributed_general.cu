@@ -22,12 +22,12 @@ void all2all(const size_t batch_size, const size_t batch_size_secure) {
         // transfer_plan.show_plan();
 
         auto context = std::make_unique< gossip::context_t >(num_gpus);
-        auto all2all = std::make_unique< gossip::all2all_t >(context.get(), transfer_plan);
-        auto multisplit = std::make_unique< gossip::multisplit_t >(context.get());
-        auto point2point = std::make_unique< gossip::point2point_t >(context.get());
+        auto all2all = std::make_unique< gossip::all2all_t >(*context, transfer_plan);
+        auto multisplit = std::make_unique< gossip::multisplit_t >(*context);
+        auto point2point = std::make_unique< gossip::point2point_t >(*context);
 
         run_multisplit_all2all<data_t>(
-            context.get(), all2all.get(), multisplit.get(), point2point.get(),
+            *context, *all2all, *multisplit, *point2point,
             batch_size, batch_size_secure);
 
         context->sync_hard();
@@ -46,12 +46,12 @@ void all2all_async(const size_t batch_size, const size_t batch_size_secure) {
         // transfer_plan.show_plan();
 
         auto context = std::make_unique< gossip::context_t >(num_gpus);
-        auto all2all = std::make_unique< gossip::all2all_async_t >(context.get(), transfer_plan);
-        auto multisplit = std::make_unique< gossip::multisplit_t >(context.get());
-        auto point2point = std::make_unique< gossip::point2point_t >(context.get());
+        auto all2all = std::make_unique< gossip::all2all_async_t >(*context, transfer_plan);
+        auto multisplit = std::make_unique< gossip::multisplit_t >(*context);
+        auto point2point = std::make_unique< gossip::point2point_t >(*context);
 
-        run_multisplit_all2all<data_t>(
-            context.get(), all2all.get(), multisplit.get(), point2point.get(),
+        run_multisplit_all2all_async<data_t>(
+            *context, *all2all, *multisplit, *point2point,
             batch_size, batch_size_secure);
 
         context->sync_hard();
@@ -84,13 +84,13 @@ void scatter_gather(const size_t batch_size, const size_t batch_size_secure) {
         // gather_plan.show_plan();
 
         auto context = std::make_unique< gossip::context_t >(num_gpus);
-        auto point2point = std::make_unique< gossip::point2point_t >(context.get());
-        auto multisplit = std::make_unique< gossip::multisplit_t >(context.get());
-        auto scatter = std::make_unique< gossip::scatter_t >(context.get(), scatter_plan);
-        auto gather = std::make_unique< gossip::gather_t >(context.get(), gather_plan);
+        auto point2point = std::make_unique< gossip::point2point_t >(*context);
+        auto multisplit = std::make_unique< gossip::multisplit_t >(*context);
+        auto scatter = std::make_unique< gossip::scatter_t >(*context, scatter_plan);
+        auto gather = std::make_unique< gossip::gather_t >(*context, gather_plan);
 
         run_multisplit_scatter_gather<data_t>(
-            context.get(), point2point.get(), multisplit.get(), scatter.get(), gather.get(),
+            *context, *point2point, *multisplit, *scatter, *gather,
             main_gpu,
             batch_size, batch_size_secure);
 
@@ -110,12 +110,12 @@ void broadcaster(const size_t batch_size, const size_t batch_size_secure) {
         // transfer_plan.show_plan();
 
         auto context = std::make_unique< gossip::context_t >(num_gpus);
-        auto broadcast = std::make_unique< gossip::broadcast_t >(context.get(), transfer_plan);
-        auto multisplit = std::make_unique< gossip::multisplit_t >(context.get());
-        auto point2point = std::make_unique< gossip::point2point_t >(context.get());
+        auto broadcast = std::make_unique< gossip::broadcast_t >(*context, transfer_plan);
+        auto multisplit = std::make_unique< gossip::multisplit_t >(*context);
+        auto point2point = std::make_unique< gossip::point2point_t >(*context);
 
         run_multisplit_broadcast<data_t>(
-            context.get(), point2point.get(), multisplit.get(), broadcast.get(),
+            *context, *point2point, *multisplit, *broadcast,
             batch_size, batch_size_secure);
 
         context->sync_hard();
