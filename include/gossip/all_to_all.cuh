@@ -1,7 +1,6 @@
 #pragma once
 
 #include <vector>
-#include <stdexcept>
 
 #include "config.h"
 #include "context.cuh"
@@ -9,11 +8,9 @@
 
 namespace gossip {
 
-template<
-    bool throw_exceptions=true>
 class all2all_t {
 
-    const context_t<> * context;
+    const context_t * context;
     bool external_context;
 
     transfer_plan_t transfer_plan;
@@ -22,23 +19,20 @@ class all2all_t {
 public:
     all2all_t (
         const gpu_id_t num_gpus_)
-        : external_context (false)
-    {
-        context = new context_t<>(num_gpus_);
-
-        transfer_plan = all2all::default_plan(num_gpus_);
-
-        plan_valid = transfer_plan.valid();
-    }
+        : context( new context_t(num_gpus_) ),
+          external_context (false),
+          transfer_plan( all2all::default_plan(num_gpus_) ),
+          plan_valid( transfer_plan.valid() )
+    {}
 
     all2all_t (
         const gpu_id_t num_gpus_,
         const transfer_plan_t& transfer_plan_)
-        : external_context (false),
-          transfer_plan(transfer_plan_)
+        : context( new context_t(num_gpus_) ),
+          external_context(false),
+          transfer_plan(transfer_plan_),
+          plan_valid(false)
     {
-        context = new context_t<>(num_gpus_);
-
         if(!transfer_plan.valid())
             all2all::verify_plan(transfer_plan);
 
@@ -48,23 +42,20 @@ public:
 
     all2all_t (
         const std::vector<gpu_id_t>& device_ids_)
-        : external_context (false)
-    {
-        context = new context_t<>(device_ids_);
-
-        transfer_plan = all2all::default_plan(device_ids_.size());
-
-        plan_valid = transfer_plan.valid();
-    }
+        : context( new context_t(device_ids_) ),
+          external_context (false),
+          transfer_plan( all2all::default_plan(device_ids_.size()) ),
+          plan_valid( transfer_plan.valid() )
+    {}
 
     all2all_t (
         const std::vector<gpu_id_t>& device_ids_,
         const transfer_plan_t& transfer_plan_)
-        : external_context (false),
-          transfer_plan(transfer_plan_)
+        : context( new context_t(device_ids_) ),
+          external_context (false),
+          transfer_plan(transfer_plan_),
+          plan_valid(false)
     {
-        context = new context_t<>(device_ids_);
-
         if(!transfer_plan.valid())
             all2all::verify_plan(transfer_plan);
 
@@ -72,34 +63,27 @@ public:
                      transfer_plan.valid();
     }
 
-     all2all_t (
-        const context_t<> * context_)
+    all2all_t (
+        const context_t * context_)
         : context(context_),
-          external_context (true)
+          external_context (true),
+          transfer_plan( all2all::default_plan(context->get_num_devices()) ),
+          plan_valid( transfer_plan.valid() )
     {
-        if (throw_exceptions)
-            if (!context->is_valid())
-                throw std::invalid_argument(
-                    "You have to pass a valid context!"
-                );
-
-        transfer_plan = all2all::default_plan(get_num_devices());
-
-        plan_valid = transfer_plan.valid();
+        check(context->is_valid(),
+              "You have to pass a valid context!");
     }
 
     all2all_t (
-        const context_t<> * context_,
+        const context_t * context_,
         const transfer_plan_t& transfer_plan_)
         : context(context_),
           external_context (true),
-          transfer_plan(transfer_plan_)
+          transfer_plan(transfer_plan_),
+          plan_valid(false)
     {
-        if (throw_exceptions)
-            if (!context->is_valid())
-                throw std::invalid_argument(
-                    "You have to pass a valid context!"
-                );
+        check(context->is_valid(),
+              "You have to pass a valid context!");
 
         if(!transfer_plan.valid())
             all2all::verify_plan(transfer_plan);
@@ -140,6 +124,15 @@ private:
             trg_pos(trg_pos),
             len(len)
         {}
+
+        void show() const {
+            std::cout <<   "src:" << int(src_gpu)
+                        << ", pos:" << src_pos
+                        << ", trg:" << int(trg_gpu)
+                        << ", pos:" << trg_pos
+                        << ", len:" << len
+                        << std::endl;
+        }
     };
 
     template<typename table_t>
@@ -155,7 +148,7 @@ private:
         size_t num_chunks;
 
         transfer_handler(
-            const context_t<> * context_,
+            const context_t * context_,
             const size_t num_phases_,
             const std::vector<std::vector<table_t>>& displacements,
             const std::vector<std::vector<table_t>>& sizes,
@@ -175,11 +168,9 @@ private:
             const std::vector<gpu_id_t>& sequence,
             const size_t chunks = 1
         ) {
-            if (sequence.size() != num_phases+1)
-                if (throw_exceptions)
-                    throw std::invalid_argument(
-                        "sequence size does not match number of phases.");
-                else return false;
+            if(!check(sequence.size() == num_phases+1,
+                      "sequence size does not match number of phases."))
+                return false;
 
             const size_t offset = src_offsets[sequence.front()][sequence.back()];
             const size_t size_per_chunk = SDIV(sizes[sequence.front()][sequence.back()], num_chunks);
@@ -211,28 +202,8 @@ private:
 
     void show_phase(const std::vector<transfer>& transfers) const {
         for(const transfer& t : transfers) {
-            std::cout <<   "src:" << int(t.src_gpu)
-                      << ", pos:" << t.src_pos
-                      << ", trg:" << int(t.trg_gpu)
-                      << ", pos:" << t.trg_pos
-                      << ", len:" << t.len
-                      << std::endl;
+            t.show();
         }
-    }
-
-    template<typename index_t>
-    bool check_phase_size(
-        const std::vector<size_t >& transfer_sizes,
-        const std::vector<index_t>& array_lens
-    ) const {
-        for (gpu_id_t trg = 0; trg < get_num_devices(); trg++) {
-            if (transfer_sizes[trg] > array_lens[trg])
-                if (throw_exceptions)
-                    throw std::invalid_argument(
-                        "array lens not compatible with transfer sizes.");
-                else return false;
-        }
-        return true;
     }
 
     template<typename value_t>
@@ -241,16 +212,12 @@ private:
         const std::vector<value_t *>& srcs,
         const std::vector<value_t *>& dsts
     ) const {
-        if (srcs.size() != get_num_devices())
-            if (throw_exceptions)
-                throw std::invalid_argument(
-                    "srcs size does not match number of gpus.");
-            else return false;
-        if (dsts.size() != get_num_devices())
-            if (throw_exceptions)
-                throw std::invalid_argument(
-                    "dsts size does not match number of gpus.");
-            else return false;
+        if (!check(srcs.size() == get_num_devices(),
+                   "srcs size does not match number of gpus."))
+            return false;
+        if (!check(dsts.size() == get_num_devices(),
+                    "dsts size does not match number of gpus."))
+            return false;
 
         for(const transfer& t : transfers) {
             const gpu_id_t src = context->get_device_id(t.src_gpu);
@@ -262,38 +229,6 @@ private:
             value_t * to   = dsts[t.trg_gpu] + t.trg_pos;
 
             cudaMemcpyPeerAsync(to, trg, from, src, size, stream);
-        } CUERR
-
-        return true;
-    }
-
-    // only for convenience
-    template <
-        typename value_t,
-        typename index_t>
-    bool clear(
-        const std::vector<value_t *>& mem,
-        const std::vector<index_t  >& mem_lens
-    ) const {
-        if (mem.size() != get_num_devices())
-            if (throw_exceptions)
-                throw std::invalid_argument(
-                    "mem size does not match number of gpus.");
-            else return false;
-        if (mem_lens.size() != get_num_devices())
-            if (throw_exceptions)
-                throw std::invalid_argument(
-                    "mem_lens size does not match number of gpus.");
-            else return false;
-
-        context->sync_all_streams();
-        for (gpu_id_t gpu = 0; gpu < get_num_devices(); gpu++) {
-            const gpu_id_t id = context->get_device_id(gpu);
-            const auto stream = context->get_streams(gpu)[0];
-            cudaSetDevice(id);
-            const size_t size = mem_lens[gpu]
-                              * sizeof(value_t);
-            cudaMemsetAsync(mem[gpu], 0, size, stream);
         } CUERR
 
         return true;
@@ -311,41 +246,30 @@ public:
         const std::vector<index_t  >& dsts_lens,        // dst_len[k] is length of dst[k]
         std::vector<value_t *>& bufs,
         const std::vector<index_t  >& bufs_lens,
-        const std::vector<std::vector<table_t> >& table // [src_gpu, partition]
+        const std::vector<std::vector<table_t> >& send_counts // [src_gpu, partition]
     ) const {
         if (!plan_valid) return false;
 
-        if (srcs.size() != get_num_devices())
-            if (throw_exceptions)
-                throw std::invalid_argument(
-                    "srcs size does not match number of gpus.");
-            else return false;
-        if (srcs_lens.size() != get_num_devices())
-            if (throw_exceptions)
-                throw std::invalid_argument(
-                    "srcs_lens size does not match number of gpus.");
-            else return false;
-        if (dsts.size() != get_num_devices())
-            if (throw_exceptions)
-                throw std::invalid_argument(
-                    "dsts size does not match number of gpus.");
-            else return false;
-        if (dsts_lens.size() != get_num_devices())
-            if (throw_exceptions)
-                throw std::invalid_argument(
-                    "dsts_lens size does not match number of gpus.");
-            else return false;
-        if (table.size() != get_num_devices())
-            if (throw_exceptions)
-                throw std::invalid_argument(
-                    "table size does not match number of gpus.");
-            else return false;
-        for (const auto& t : table)
-            if (t.size() != get_num_devices())
-                if (throw_exceptions)
-                    throw std::invalid_argument(
-                        "table size does not match number of gpus.");
-                else return false;
+        if (!check(srcs.size() == get_num_devices(),
+                    "srcs size does not match number of gpus."))
+            return false;
+        if (!check(srcs_lens.size() == get_num_devices(),
+                    "srcs_lens size does not match number of gpus."))
+            return false;
+        if (!check(dsts.size() == get_num_devices(),
+                    "dsts size does not match number of gpus."))
+            return false;
+        if (!check(dsts_lens.size() == get_num_devices(),
+                    "dsts_lens size does not match number of gpus."))
+            return false;
+        if (!check(send_counts.size() == get_num_devices(),
+                    "table size does not match number of gpus."))
+            return false;
+        for (const auto& counts : send_counts) {
+            if (!check(counts.size() == get_num_devices(),
+                        "table size does not match number of gpus."))
+                return false;
+        }
 
         const auto num_phases = transfer_plan.num_steps();
         const auto num_chunks = transfer_plan.num_chunks();
@@ -354,12 +278,12 @@ public:
         // horizontal scan to get initial offsets
         for (gpu_id_t gpu = 0; gpu < get_num_devices(); ++gpu) {
             for (gpu_id_t part = 0; part < get_num_devices(); ++part) {
-                displacements[gpu][part+1] = table[gpu][part]+displacements[gpu][part];
+                displacements[gpu][part+1] = send_counts[gpu][part]+displacements[gpu][part];
             }
         }
 
         transfer_handler<table_t> transfers(context, num_phases,
-                                            displacements, table,
+                                            displacements, send_counts,
                                             num_chunks);
 
         // prepare transfers according to transfer_plan
@@ -369,7 +293,7 @@ public:
 
         for (size_t p = 0; p < num_phases; ++p) {
             // show_phase(transfers.phases[p]);
-            if(!check_phase_size(transfers.phases_offsets[p], dsts_lens)) return false;
+            if(!check_size(transfers.phases_offsets[p], dsts_lens)) return false;
         }
 
         // syncs with zero stream in order to enforce sequential
@@ -406,6 +330,10 @@ public:
 
     void sync_hard () const noexcept {
         context->sync_hard();
+    }
+
+    const context_t& get_context() const noexcept {
+        return *context;
     }
 };
 

@@ -1,20 +1,18 @@
 #pragma once
 
 #include <vector>
-#include <stdexcept>
 
 #include "config.h"
+#include "common.cuh"
 #include "context.cuh"
 #include "broadcast_plan.hpp"
 
 namespace gossip {
 
-template<
-    bool throw_exceptions=true>
 class broadcast_t {
 
 private:
-    const context_t<> * context;
+    const context_t * context;
     bool external_context;
 
     transfer_plan_t transfer_plan;
@@ -24,23 +22,20 @@ public:
     broadcast_t (
         const gpu_id_t num_gpus_,
         const gpu_id_t main_gpu_)
-        : external_context (false)
-    {
-        context = new context_t<>(num_gpus_);
-
-        transfer_plan = broadcast::default_plan(num_gpus_, main_gpu_);
-
-        plan_valid = transfer_plan.valid();
-    }
+        : context( new context_t(num_gpus_) ),
+          external_context (false),
+          transfer_plan( broadcast::default_plan(num_gpus_, main_gpu_) ),
+          plan_valid( transfer_plan.valid() )
+    {}
 
     broadcast_t (
         const gpu_id_t num_gpus_,
         const transfer_plan_t& transfer_plan_)
-        : external_context (false),
-          transfer_plan(transfer_plan_)
+        : context( new context_t(num_gpus_) ),
+          external_context(false),
+          transfer_plan(transfer_plan_),
+          plan_valid(false)
     {
-        context = new context_t<>(num_gpus_);
-
         if(!transfer_plan.valid())
             broadcast::verify_plan(transfer_plan);
 
@@ -51,23 +46,20 @@ public:
     broadcast_t (
         const std::vector<gpu_id_t>& device_ids_,
         const gpu_id_t main_gpu_)
-        : external_context (false)
-    {
-        context = new context_t<>(device_ids_);
-
-        transfer_plan = broadcast::default_plan(device_ids_.size(), main_gpu_);
-
-        plan_valid = transfer_plan.valid();
-    }
+        : context( new context_t(device_ids_) ),
+          external_context (false),
+          transfer_plan( broadcast::default_plan(device_ids_.size(), main_gpu_) ),
+          plan_valid( transfer_plan.valid() )
+    {}
 
     broadcast_t (
         const std::vector<gpu_id_t>& device_ids_,
         const transfer_plan_t& transfer_plan_)
-        : external_context (false),
-          transfer_plan(transfer_plan_)
+        : context( new context_t(device_ids_) ),
+          external_context (false),
+          transfer_plan(transfer_plan_),
+          plan_valid(false)
     {
-        context = new context_t<>(device_ids_);
-
         if(!transfer_plan.valid())
             broadcast::verify_plan(transfer_plan);
 
@@ -76,34 +68,27 @@ public:
     }
 
      broadcast_t (
-        const context_t<> * context_,
+        const context_t * context_,
         const gpu_id_t main_gpu_)
         : context(context_),
-          external_context (true)
+          external_context (true),
+          transfer_plan( broadcast::default_plan(context->get_num_devices(), main_gpu_) ),
+          plan_valid( transfer_plan.valid() )
     {
-        if (throw_exceptions)
-            if (!context->is_valid())
-                throw std::invalid_argument(
-                    "You have to pass a valid context!"
-                );
-
-        transfer_plan = broadcast::default_plan(get_num_devices(), main_gpu_);
-
-        plan_valid = transfer_plan.valid();
+        check(context->is_valid(),
+              "You have to pass a valid context!");
     }
 
     broadcast_t (
-        const context_t<> * context_,
+        const context_t * context_,
         const transfer_plan_t& transfer_plan_)
         : context(context_),
           external_context (true),
-          transfer_plan(transfer_plan_)
+          transfer_plan(transfer_plan_),
+          plan_valid(false)
     {
-        if (throw_exceptions)
-            if (!context->is_valid())
-                throw std::invalid_argument(
-                    "You have to pass a valid context!"
-                );
+        check(context->is_valid(),
+              "You have to pass a valid context!");
 
         if(!transfer_plan.valid())
             broadcast::verify_plan(transfer_plan);
@@ -166,12 +151,12 @@ private:
     };
 
     struct transfer_handler {
-        const context_t<> * context;
+        const context_t * context;
         const transfer_plan_t& transfer_plan;
         std::vector<std::vector<transfer *> > transfers;
 
         transfer_handler(
-            const context_t<> * context,
+            const context_t * context,
             const transfer_plan_t& transfer_plan
         ) :
             context(context),
@@ -190,23 +175,29 @@ private:
         }
 
         void load_plan() {
-            for(const auto& sequence : transfer_plan.transfer_sequences()) {
-                const gpu_id_t final_trg = sequence.seq.back();
+            // on main gpu: direct transfer (copy) in first step
+            {
+                const size_t step = 0;
+
+                const gpu_id_t src = transfer_plan.main_gpu();
+                const gpu_id_t trg = transfer_plan.main_gpu();
+                const size_t index = src * num_gpus() + trg;
 
                 cudaEvent_t* event_before = nullptr;
                 cudaEvent_t* event_after = nullptr;
 
-                if (sequence.seq.front() == final_trg) {
-                    // direct transfer (copy) in first phase
-                    const gpu_id_t src = final_trg;
-                    const gpu_id_t trg = final_trg;
+                transfers[step][index] = new transfer(event_before, event_after);
+            }
 
-                    const size_t index = src * num_gpus() + trg;
+            // other gpus: transfer according to sequence
+            for(const auto& sequence : transfer_plan.transfer_sequences()) {
 
-                    const size_t step = 0;
-                    transfers[step][index] = new transfer(event_before, event_after);
-                }
-                else {
+                const auto final_trg = sequence.seq.back();
+
+                if (sequence.seq.front() != final_trg) {
+                    cudaEvent_t* event_before = nullptr;
+                    cudaEvent_t* event_after = nullptr;
+
                     for(size_t step = 0; step < num_steps(); ++step) {
                         const gpu_id_t src = sequence.seq[step];
                         const gpu_id_t trg = sequence.seq[step+1];
@@ -378,16 +369,12 @@ public:
 
         if (!plan_valid) return false;
 
-        if (recvbufs.size() != get_num_devices())
-            if (throw_exceptions)
-                throw std::invalid_argument(
-                    "recvbufs size does not match number of gpus.");
-            else return false;
-        if (recvbufs_lens.size() != get_num_devices())
-            if (throw_exceptions)
-                throw std::invalid_argument(
-                    "recvbufs_lens size does not match number of gpus.");
-            else return false;
+        if (!check(recvbufs.size() == get_num_devices(),
+                    "recvbufs size does not match number of gpus."))
+            return false;
+        if (!check(recvbufs_lens.size() == get_num_devices(),
+                    "recvbufs_lens size does not match number of gpus."))
+            return false;
 
         const auto num_steps = transfer_plan.num_steps();
         const auto num_chunks = transfer_plan.num_chunks();

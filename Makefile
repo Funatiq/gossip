@@ -4,21 +4,21 @@ NVCCGENCODE = -gencode arch=compute_60,code=sm_60 \
 NVCCFLAGS = $(NVCCGENCODE) -O3 -std=c++14 --expt-extended-lambda -Xcompiler="-fopenmp" -Wreorder -lineinfo
 
 HEADERS = include/gossip.cuh \
-		  include/gossip/auxiliary.cuh \
-		  include/gossip/context.cuh \
-		  include/gossip/all_to_all.cuh \
 		  include/gossip/all_to_all_async.cuh \
+		  include/gossip/all_to_all_plan.hpp \
+		  include/gossip/all_to_all.cuh \
+		  include/gossip/broadcast_plan.hpp \
 		  include/gossip/broadcast.cuh \
-		  include/gossip/scatter.cuh \
+		  include/gossip/common.cuh \
+		  include/gossip/context.cuh \
+		  include/gossip/gather_plan.hpp \
 		  include/gossip/gather.cuh \
 		  include/gossip/memory_manager.cuh \
 		  include/gossip/multisplit.cuh \
 		  include/gossip/point_to_point.cuh \
-		  include/gossip/transfer_plan.hpp \
-		  include/gossip/all_to_all_plan.hpp \
-		  include/gossip/broadcast_plan.hpp \
 		  include/gossip/scatter_plan.hpp \
-		  include/gossip/gather_plan.hpp
+		  include/gossip/scatter.cuh \
+		  include/gossip/transfer_plan.hpp
 
 DGX = include/gossip/all_to_all_dgx1v.cuh
 

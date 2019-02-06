@@ -17,53 +17,45 @@ namespace dgx1v {
     };
 }
 
-template<
-    bool throw_exceptions=true>
-class all2all_dgx1v_t : public all2all_t<throw_exceptions> {
+class all2all_dgx1v_t : public all2all_t {
 
     static constexpr gpu_id_t num_gpus = 8;
 
 public:
     all2all_dgx1v_t ()
-        : all2all_t<throw_exceptions>(num_gpus, dgx1v::default_plan)
+        : all2all_t(num_gpus, dgx1v::default_plan)
     {}
 
     all2all_dgx1v_t (
         const transfer_plan_t& transfer_plan_)
-        : all2all_t<throw_exceptions>(num_gpus, transfer_plan_)
+        : all2all_t(num_gpus, transfer_plan_)
     {}
 
     all2all_dgx1v_t (
-        context_t<> * context_)
-        : all2all_t<throw_exceptions>(context_, dgx1v::default_plan)
+        context_t * context_)
+        : all2all_t(context_, dgx1v::default_plan)
     {
         check_context();
     }
 
     all2all_dgx1v_t (
-        context_t<> * context_,
+        context_t * context_,
         const transfer_plan_t& transfer_plan_)
-        : all2all_t<throw_exceptions>(context_, transfer_plan_)
+        : all2all_t(context_, transfer_plan_)
     {
         check_context();
     }
 
 private:
     bool check_context() const {
-        if (this->get_num_devices() != num_gpus)
-            if (throw_exceptions)
-                throw std::invalid_argument(
-                    "Context is invalid for DGX1V!"
-                );
-            else return false;
+        if (!check(this->get_num_devices() == num_gpus,
+                    "Context is invalid for DGX1V!"))
+            return false;
 
         for(gpu_id_t gpu = 0; gpu < this->get_num_devices(); ++gpu)
-            if (this->context->get_device_id(gpu) != gpu)
-                if (throw_exceptions)
-                    throw std::invalid_argument(
-                        "Context is invalid for DGX1V!"
-                    );
-            else return false;
+            if (!check(this->get_context().get_device_id(gpu) == gpu,
+                        "Context is invalid for DGX1V!"))
+            return false;
 
         return true;
     }

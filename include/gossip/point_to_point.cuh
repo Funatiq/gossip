@@ -5,39 +5,32 @@
 
 namespace gossip {
 
-template <
-    bool throw_exceptions=true>
 class point2point_t {
 
-    const context_t<> * context;
+    const context_t * context;
     bool external_context;
 
 public:
 
     point2point_t (
         const gpu_id_t num_gpus_)
-        : external_context (false)
-    {
-        context = new context_t<>(num_gpus_);
-    }
+        : context( new context_t(num_gpus_) ),
+          external_context (false)
+    {}
 
     point2point_t (
         const std::vector<gpu_id_t>& device_ids_)
-        : external_context (false)
-    {
-        context = new context_t<>(device_ids_);
-    }
+        : context( new context_t(device_ids_) ),
+          external_context (false)
+    {}
 
     point2point_t (
-        const context_t<> * context_)
+        const context_t * context_)
         : context(context_),
           external_context (true)
-        {
-            if (throw_exceptions)
-                if (!context->is_valid())
-                    throw std::invalid_argument(
-                        "You have to pass a valid context!"
-                    );
+    {
+        check(context->is_valid(),
+              "You have to pass a valid context!");
     }
 
     ~point2point_t () {
@@ -54,21 +47,15 @@ public:
         const std::vector<value_t *>& dsts,
         const std::vector<index_t  >& lens
     ) const {
-        if (srcs.size() != get_num_devices())
-            if (throw_exceptions)
-                throw std::invalid_argument(
-                    "srcs size does not match number of gpus.");
-            else return false;
-        if (dsts.size() != get_num_devices())
-            if (throw_exceptions)
-                throw std::invalid_argument(
-                    "dsts size does not match number of gpus.");
-            else return false;
-        if (lens.size() != get_num_devices())
-            if (throw_exceptions)
-                throw std::invalid_argument(
-                    "lens size does not match number of gpus.");
-            else return false;
+        if (!check(srcs.size() == get_num_devices(),
+                    "srcs size does not match number of gpus."))
+            return false;
+        if (!check(dsts.size() == get_num_devices(),
+                    "dsts size does not match number of gpus."))
+            return false;
+        if (!check(lens.size() == get_num_devices(),
+                    "lens size does not match number of gpus."))
+            return false;
 
         for (gpu_id_t src_gpu = 0; src_gpu < get_num_devices(); ++src_gpu) {
             if (lens[src_gpu] > 0) {

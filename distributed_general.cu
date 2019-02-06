@@ -8,7 +8,7 @@
 #include "include/plan_parser.hpp"
 
 // global context
-//auto context = std::make_unique< gossip::context_t<> >(4);
+//auto context = std::make_unique< gossip::context_t >(4);
 
 template<typename data_t>
 void all2all(const size_t batch_size, const size_t batch_size_secure) {
@@ -21,10 +21,10 @@ void all2all(const size_t batch_size, const size_t batch_size_secure) {
     if(transfer_plan.valid()) {
         // transfer_plan.show_plan();
 
-        auto context = std::make_unique< gossip::context_t<> >(num_gpus);
-        auto all2all = std::make_unique< gossip::all2all_t<> >(context.get(), transfer_plan);
-        auto multisplit = std::make_unique< gossip::multisplit_t<> >(context.get());
-        auto point2point = std::make_unique< gossip::point2point_t<> >(context.get());
+        auto context = std::make_unique< gossip::context_t >(num_gpus);
+        auto all2all = std::make_unique< gossip::all2all_t >(context.get(), transfer_plan);
+        auto multisplit = std::make_unique< gossip::multisplit_t >(context.get());
+        auto point2point = std::make_unique< gossip::point2point_t >(context.get());
 
         run_multisplit_all2all<data_t>(
             context.get(), all2all.get(), multisplit.get(), point2point.get(),
@@ -45,10 +45,10 @@ void all2all_async(const size_t batch_size, const size_t batch_size_secure) {
     if(transfer_plan.valid()) {
         // transfer_plan.show_plan();
 
-        auto context = std::make_unique< gossip::context_t<> >(num_gpus);
-        auto all2all = std::make_unique< gossip::all2all_async_t<> >(context.get(), transfer_plan);
-        auto multisplit = std::make_unique< gossip::multisplit_t<> >(context.get());
-        auto point2point = std::make_unique< gossip::point2point_t<> >(context.get());
+        auto context = std::make_unique< gossip::context_t >(num_gpus);
+        auto all2all = std::make_unique< gossip::all2all_async_t >(context.get(), transfer_plan);
+        auto multisplit = std::make_unique< gossip::multisplit_t >(context.get());
+        auto point2point = std::make_unique< gossip::point2point_t >(context.get());
 
         run_multisplit_all2all<data_t>(
             context.get(), all2all.get(), multisplit.get(), point2point.get(),
@@ -83,11 +83,11 @@ void scatter_gather(const size_t batch_size, const size_t batch_size_secure) {
         // scatter_plan.show_plan();
         // gather_plan.show_plan();
 
-        auto context = std::make_unique< gossip::context_t<> >(num_gpus);
-        auto point2point = std::make_unique< gossip::point2point_t<> >(context.get());
-        auto multisplit = std::make_unique< gossip::multisplit_t<> >(context.get());
-        auto scatter = std::make_unique< gossip::scatter_t<> >(context.get(), scatter_plan);
-        auto gather = std::make_unique< gossip::gather_t<> >(context.get(), gather_plan);
+        auto context = std::make_unique< gossip::context_t >(num_gpus);
+        auto point2point = std::make_unique< gossip::point2point_t >(context.get());
+        auto multisplit = std::make_unique< gossip::multisplit_t >(context.get());
+        auto scatter = std::make_unique< gossip::scatter_t >(context.get(), scatter_plan);
+        auto gather = std::make_unique< gossip::gather_t >(context.get(), gather_plan);
 
         run_multisplit_scatter_gather<data_t>(
             context.get(), point2point.get(), multisplit.get(), scatter.get(), gather.get(),
@@ -109,10 +109,10 @@ void broadcaster(const size_t batch_size, const size_t batch_size_secure) {
     if(transfer_plan.valid()) {
         // transfer_plan.show_plan();
 
-        auto context = std::make_unique< gossip::context_t<> >(num_gpus);
-        auto broadcast = std::make_unique< gossip::broadcast_t<> >(context.get(), transfer_plan);
-        auto multisplit = std::make_unique< gossip::multisplit_t<> >(context.get());
-        auto point2point = std::make_unique< gossip::point2point_t<> >(context.get());
+        auto context = std::make_unique< gossip::context_t >(num_gpus);
+        auto broadcast = std::make_unique< gossip::broadcast_t >(context.get(), transfer_plan);
+        auto multisplit = std::make_unique< gossip::multisplit_t >(context.get());
+        auto point2point = std::make_unique< gossip::point2point_t >(context.get());
 
         run_multisplit_broadcast<data_t>(
             context.get(), point2point.get(), multisplit.get(), broadcast.get(),
@@ -144,6 +144,6 @@ int main (int argc, char *argv[]) {
     std::cout << "RUN: scatter_gather" << std::endl;
     scatter_gather<data_t>(batch_size, batch_size_secure);
 
-    //std::cout << "broadcast" << std::endl;
-    //broadcaster<data_t>(batch_size, batch_size_secure);
+    // std::cout << "broadcast" << std::endl;
+    // broadcaster<data_t>(batch_size, batch_size_secure);
 }

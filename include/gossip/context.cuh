@@ -6,32 +6,24 @@
 
 #include "../cudahelpers/cuda_helpers.cuh"
 #include "config.h"
+#include "common.cuh"
 
 namespace gossip {
 
-template <
-    bool throw_exceptions=true,
-    uint64_t PEER_STATUS_SLOW=0,
-    uint64_t PEER_STATUS_DIAG=1,
-    uint64_t PEER_STATUS_FAST=2>
 class context_t {
 
     gpu_id_t num_gpus;
     std::vector<gpu_id_t> device_ids;
     std::vector<std::vector<cudaStream_t>> streams;
-    std::vector<std::vector<uint64_t>> peer_status;
+    std::vector<std::vector<PEER_STATUS>> peer_status;
     bool valid = true;
 
 public:
 
     context_t (const gpu_id_t num_gpus_) {
 
-        if(num_gpus_ < 1) {
-            valid = false;
-            if (throw_exceptions)
-                throw std::invalid_argument(
-                    "Invalid number of devices.");
-        }
+        valid = check(num_gpus_ > 0,
+                      "Invalid number of devices.");
 
         num_gpus = num_gpus_;
 
@@ -43,12 +35,8 @@ public:
 
     context_t (const std::vector<gpu_id_t>& device_ids_) {
 
-        if(device_ids_.empty()) {
-            valid = false;
-            if (throw_exceptions)
-                throw std::invalid_argument(
-                    "Invalid number of device ids.");
-        }
+        valid = check(!device_ids_.empty(),
+                      "Invalid number of device ids.");
 
         num_gpus = device_ids_.size();
 
@@ -73,7 +61,7 @@ private:
             }
         } CUERR
 
-        peer_status.resize(num_gpus, std::vector<uint64_t>(num_gpus));
+        peer_status.resize(num_gpus, std::vector<PEER_STATUS>(num_gpus));
 
         // compute the connectivity matrix
         for (gpu_id_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu) {
@@ -84,13 +72,13 @@ private:
 
                 // check if src can access dst
                 if (src == dst) {
-                    peer_status[src_gpu][dst_gpu] = PEER_STATUS_DIAG;
+                    peer_status[src_gpu][dst_gpu] = PEER_STATUS::DIAG;
                 } else {
                     int32_t status;
                     cudaDeviceCanAccessPeer(&status, src, dst);
                     peer_status[src_gpu][dst_gpu] = status ?
-                                                    PEER_STATUS_FAST :
-                                                    PEER_STATUS_SLOW ;
+                                                    PEER_STATUS::FAST :
+                                                    PEER_STATUS::SLOW ;
                 }
             }
         } CUERR
@@ -107,7 +95,7 @@ private:
                                   << std::endl;
                 }
 
-                if (peer_status[src_gpu][dst_gpu] == PEER_STATUS_FAST) {
+                if (peer_status[src_gpu][dst_gpu] == PEER_STATUS::FAST) {
                     cudaDeviceEnablePeerAccess(dst, 0);
 
                     // consume error for rendundant
@@ -151,7 +139,7 @@ public:
             for (gpu_id_t dst_gpu = 0; dst_gpu < num_gpus; ++dst_gpu) {
                 const gpu_id_t dst = get_device_id(dst_gpu);
 
-                if (peer_status[src_gpu][dst_gpu] == PEER_STATUS_FAST) {
+                if (peer_status[src_gpu][dst_gpu] == PEER_STATUS::FAST) {
                     cudaDeviceDisablePeerAccess(dst);
 
                     // consume error for rendundant
@@ -220,7 +208,7 @@ public:
         for (gpu_id_t src_gpu = 0; src_gpu < num_gpus; ++src_gpu)
             for (gpu_id_t dst_gpu = 0; dst_gpu < num_gpus; ++dst_gpu)
                 std::cout << (dst_gpu == 0 ? "STATUS: |" : "")
-                          << uint64_t(peer_status[src_gpu][dst_gpu])
+                          << uint32_t(peer_status[src_gpu][dst_gpu])
                           << (dst_gpu+1 == num_gpus ? "|\n" : " ");
     }
 };

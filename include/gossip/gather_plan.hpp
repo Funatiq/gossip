@@ -3,8 +3,8 @@
 #include <vector>
 #include <iostream>
 
+#include "common.cuh"
 #include "transfer_plan.hpp"
-#include "utils.hpp"
 
 namespace gossip {
 

@@ -7,39 +7,32 @@
 
 namespace gossip {
 
-template<
-    bool throw_exceptions=true>
 class memory_manager_t {
 
-    const context_t<> * context;
+    const context_t * context;
     bool external_context;
 
 public:
 
     memory_manager_t (
         const gpu_id_t num_gpus_)
-        : external_context (false)
-    {
-        context = new context_t<>(num_gpus_);
-    }
+        : context( new context_t(num_gpus_) ),
+          external_context (false)
+    {}
 
     memory_manager_t (
         const std::vector<gpu_id_t>& device_ids_)
-        : external_context (false)
-    {
-        context = new context_t<>(device_ids_);
-    }
+        : context( new context_t(device_ids_) ),
+          external_context (false)
+    {}
 
     memory_manager_t (
-        const context_t<> * context_)
+        const context_t * context_)
         : context(context_),
           external_context (true)
     {
-            if (throw_exceptions)
-                if (!context->is_valid())
-                    throw std::invalid_argument(
-                        "You have to pass a valid context!"
-                    );
+        check(context->is_valid(),
+              "You have to pass a valid context!");
     }
 
     ~memory_manager_t () {
@@ -58,11 +51,9 @@ public:
 
         std::vector<value_t *> data = {};
 
-        if (lens.size() != get_num_devices())
-            if (throw_exceptions)
-                throw std::invalid_argument(
-                    "lens size does not match number of gpus.");
-            else return data;
+        if (!check(lens.size() == get_num_devices(),
+                    "lens size does not match number of gpus."))
+            return data;
 
         data.resize(get_num_devices());
 
@@ -89,11 +80,9 @@ public:
 
         std::vector<value_t *> data = {};
 
-        if (lens.size() != get_num_devices())
-            if (throw_exceptions)
-                throw std::invalid_argument(
-                    "lens size does not match number of gpus.");
-            else return data;
+        if (!check(lens.size() == get_num_devices(),
+                    "lens size does not match number of gpus."))
+            return data;
 
         data.resize(get_num_devices());
 
@@ -112,11 +101,9 @@ public:
         typename value_t>
     bool free_device(std::vector<value_t *>& data) const {
 
-        if (data.size() != get_num_devices())
-            if (throw_exceptions)
-                throw std::invalid_argument(
-                    "data size does not match number of gpus.");
-            else return false;
+        if (!check(data.size() == get_num_devices(),
+                    "data size does not match number of gpus."))
+            return false;
 
         for (gpu_id_t gpu = 0; gpu < get_num_devices(); ++gpu) {
             cudaSetDevice(context->get_device_id(gpu));
@@ -131,11 +118,9 @@ public:
         typename value_t>
     bool free_host(std::vector<value_t *>& data) const {
 
-        if (data.size() != get_num_devices())
-            if (throw_exceptions)
-                throw std::invalid_argument(
-                    "data size does not match number of gpus.");
-            else return false;
+        if (!check(data.size() == get_num_devices(),
+                    "data size does not match number of gpus."))
+            return false;
 
         for (gpu_id_t gpu = 0; gpu < get_num_devices(); ++gpu)
             cudaFreeHost(data[gpu]);
