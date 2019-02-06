@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "config.h"
+#include "error_checking.hpp"
 #include "context.cuh"
 #include "all_to_all_plan.hpp"
 

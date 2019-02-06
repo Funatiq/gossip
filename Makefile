@@ -11,6 +11,7 @@ HEADERS = include/gossip.cuh \
 		  include/gossip/broadcast.cuh \
 		  include/gossip/common.cuh \
 		  include/gossip/context.cuh \
+		  include/gossip/error_checking.hpp \
 		  include/gossip/gather_plan.hpp \
 		  include/gossip/gather.cuh \
 		  include/gossip/memory_manager.cuh \

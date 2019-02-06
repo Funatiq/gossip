@@ -3,6 +3,7 @@
 #include <cstring>
 
 #include "config.h"
+#include "error_checking.hpp"
 #include "context.cuh"
 
 namespace gossip {

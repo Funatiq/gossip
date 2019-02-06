@@ -1,7 +1,7 @@
 #pragma once
 
 #include "config.h"
-#include "common.cuh"
+#include "error_checking.hpp"
 #include "context.cuh"
 
 namespace gossip {

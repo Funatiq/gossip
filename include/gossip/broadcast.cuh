@@ -3,7 +3,7 @@
 #include <vector>
 
 #include "config.h"
-#include "common.cuh"
+#include "error_checking.hpp"
 #include "context.cuh"
 #include "broadcast_plan.hpp"
 

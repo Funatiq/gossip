@@ -6,7 +6,7 @@
 
 #include "../cudahelpers/cuda_helpers.cuh"
 #include "config.h"
-#include "common.cuh"
+#include "error_checking.hpp"
 
 namespace gossip {
 
