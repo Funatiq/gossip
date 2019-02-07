@@ -87,31 +87,34 @@ private:
     struct transfer_handler {
         const context_t * context;
 
+        std::vector<std::vector<size_t> > src_offsets;
+        std::vector<std::vector<size_t> > phases_offsets;
+        std::vector<std::vector<size_t> > trg_offsets;
+
+        const std::vector<std::vector<size_t> >& src_displacements;
+        const std::vector<std::vector<table_t> >& sizes;
+
         size_t num_phases;
         std::vector<std::vector<transfer> > phases;
-        std::vector<std::vector<size_t> > phases_offsets;
-
-        const std::vector<std::vector<size_t> >& displacements;
-        const std::vector<std::vector<table_t> >& sizes;
-        std::vector<std::vector<size_t> > src_offsets;
 
         size_t num_chunks;
 
         transfer_handler(
             const context_t * context_,
-            const size_t num_phases_,
-            const std::vector<std::vector<table_t>>& displacements,
+            const std::vector<std::vector<table_t>>& src_displacements,
+            const std::vector<std::vector<table_t>>& trg_displacements,
             const std::vector<std::vector<table_t>>& sizes,
+            const size_t num_phases_,
             const size_t num_chunks_ = 1
         ) :
             context(context_),
+            src_offsets(src_displacements), // src offsets begin at src displacements
+            phases_offsets(num_phases-1, std::vector<size_t>(context->get_num_devices())),
+            trg_offsets(trg_displacements), // trg offsets begin at trg displacements
+            src_displacements(src_displacements),
+            sizes(sizes),
             num_phases(num_phases_),
             phases(num_phases),
-            phases_offsets(num_phases, std::vector<size_t>(context->get_num_devices())),
-            displacements(displacements),
-            sizes(sizes),
-            // src offsets begin at displacements
-            src_offsets(displacements),
             num_chunks(num_chunks_)
         {}
 
@@ -123,29 +126,46 @@ private:
                       "sequence size does not match number of phases."))
                 return false;
 
-            const size_t offset = src_offsets[sequence.front()][sequence.back()];
             const size_t size_per_chunk = SDIV(sizes[sequence.front()][sequence.back()], num_chunks);
             size_t transfer_size = size_per_chunk * chunks;
+
+            const size_t src_offset = src_offsets[sequence.front()][sequence.back()];
+            const size_t trg_offset = trg_offsets[sequence.front()][sequence.back()];
             // check bounds
-            const size_t limit = displacements[sequence.front()][sequence.back()]
+            const size_t limit = src_displacements[sequence.front()][sequence.back()]
                                + sizes[sequence.front()][sequence.back()];
-            if (offset + transfer_size > limit)
-                transfer_size = limit - offset;
+            if (src_offset + transfer_size > limit)
+                transfer_size = limit - src_offset;
 
-            size_t phase = 0;
-            phases[phase].emplace_back(sequence[phase], offset,
-                                       sequence[phase+1], phases_offsets[phase][sequence[phase+1]],
-                                       transfer_size);
-            src_offsets[sequence.front()][sequence.back()] += transfer_size;
-
-            for (size_t phase = 1; phase < num_phases; ++phase) {
-                phases[phase].emplace_back(sequence[phase], phases_offsets[phase-1][sequence[phase]],
-                                           sequence[phase+1], phases_offsets[phase][sequence[phase+1]],
+            if (num_phases == 1) {
+                size_t phase = 0;
+                phases[phase].emplace_back(sequence[phase], src_offset,
+                                           sequence[phase+1], trg_offset,
                                            transfer_size);
             }
-            for (size_t phase = 0; phase < num_phases; ++phase) {
+            else {
+                size_t phase = 0;
+                phases[phase].emplace_back(sequence[phase], src_offset,
+                                           sequence[phase+1], phases_offsets[phase][sequence[phase+1]],
+                                           transfer_size);
+
+                for (phase = 1; phase < num_phases-1; ++phase) {
+                    phases[phase].emplace_back(sequence[phase], phases_offsets[phase-1][sequence[phase]],
+                                               sequence[phase+1], phases_offsets[phase][sequence[phase+1]],
+                                               transfer_size);
+                }
+
+                phase = num_phases-1;
+                phases[phase].emplace_back(sequence[phase], phases_offsets[phase-1][sequence[phase]],
+                                           sequence[phase+1], trg_offset,
+                                           transfer_size);
+            }
+
+            src_offsets[sequence.front()][sequence.back()] += transfer_size;
+            for (size_t phase = 0; phase < num_phases-1; ++phase) {
                 phases_offsets[phase][sequence[phase+1]] += transfer_size;
             }
+            trg_offsets[sequence.front()][sequence.back()] += transfer_size;
 
             return true;
         }
@@ -217,17 +237,27 @@ public:
         const auto num_phases = transfer_plan.num_steps();
         const auto num_chunks = transfer_plan.num_chunks();
 
-        std::vector<std::vector<size_t> > displacements(get_num_devices(), std::vector<size_t>(get_num_devices()+1));
+        std::vector<std::vector<size_t> > src_displacements(get_num_devices(), std::vector<size_t>(get_num_devices()+1));
         // horizontal scan to get initial offsets
         for (gpu_id_t gpu = 0; gpu < get_num_devices(); ++gpu) {
             for (gpu_id_t part = 0; part < get_num_devices(); ++part) {
-                displacements[gpu][part+1] = send_counts[gpu][part]+displacements[gpu][part];
+                src_displacements[gpu][part+1] = send_counts[gpu][part]+src_displacements[gpu][part];
             }
         }
 
-        transfer_handler<table_t> transfers(context, num_phases,
-                                            displacements, send_counts,
-                                            num_chunks);
+        std::vector<std::vector<size_t> > trg_displacements(get_num_devices()+1, std::vector<size_t>(get_num_devices()));
+        // vertical scan to get trg offsets
+        for (gpu_id_t gpu = 0; gpu < get_num_devices(); ++gpu) {
+            for (gpu_id_t part = 0; part < get_num_devices(); ++part) {
+                trg_displacements[part+1][gpu] = send_counts[part][gpu]+trg_displacements[part][gpu];
+            }
+        }
+
+        transfer_handler<table_t> transfers(context,
+                                            src_displacements,
+                                            trg_displacements,
+                                            send_counts,
+                                            num_phases, num_chunks);
 
         // prepare transfers according to transfer_plan
         for (const auto& sequence : transfer_plan.transfer_sequences()) {
