@@ -359,16 +359,16 @@ public:
         return context->get_num_devices();
     }
 
-    void print_connectivity_matrix () const noexcept {
-        context->print_connectivity_matrix();
-    }
-
     void sync () const noexcept {
         context->sync_all_streams();
     }
 
     void sync_hard () const noexcept {
         context->sync_hard();
+    }
+
+    const context_t& get_context() const noexcept {
+        return *context;
     }
 };
 

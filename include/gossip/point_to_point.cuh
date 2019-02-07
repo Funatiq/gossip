@@ -95,6 +95,10 @@ public:
     void sync_hard () const noexcept {
         context->sync_hard();
     }
+
+    const context_t& get_context() const noexcept {
+        return *context;
+    }
 };
 
 } // namespace

@@ -5,6 +5,7 @@
 #include "config.h"
 #include "error_checking.hpp"
 #include "context.cuh"
+#include "common.cuh"
 #include "all_to_all_plan.hpp"
 
 namespace gossip {
@@ -84,6 +85,8 @@ private:
 
     template<typename table_t>
     struct transfer_handler {
+        const context_t * context;
+
         size_t num_phases;
         std::vector<std::vector<transfer> > phases;
         std::vector<std::vector<size_t> > phases_offsets;
@@ -101,9 +104,10 @@ private:
             const std::vector<std::vector<table_t>>& sizes,
             const size_t num_chunks_ = 1
         ) :
+            context(context_),
             num_phases(num_phases_),
             phases(num_phases),
-            phases_offsets(num_phases, std::vector<size_t>(context_->get_num_devices())),
+            phases_offsets(num_phases, std::vector<size_t>(context->get_num_devices())),
             displacements(displacements),
             sizes(sizes),
             // src offsets begin at displacements
@@ -145,41 +149,34 @@ private:
 
             return true;
         }
-    };
 
-    void show_phase(const std::vector<transfer>& transfers) const {
-        for(const transfer& t : transfers) {
-            t.show();
+        void show_phase(const size_t phase) const {
+            for(const transfer& t : phases[phase]) {
+                t.show();
+            }
         }
-    }
 
-    template<typename value_t>
-    bool execute_phase(
-        const std::vector<transfer>& transfers,
-        const std::vector<value_t *>& srcs,
-        const std::vector<value_t *>& dsts
-    ) const {
-        if (!check(srcs.size() == get_num_devices(),
-                   "srcs size does not match number of gpus."))
-            return false;
-        if (!check(dsts.size() == get_num_devices(),
-                    "dsts size does not match number of gpus."))
-            return false;
+        template<typename value_t>
+        bool execute_phase(
+            const size_t phase,
+            const std::vector<value_t *>& srcs,
+            const std::vector<value_t *>& dsts
+        ) const {
+            for(const transfer& t : phases[phase]) {
+                const gpu_id_t src = context->get_device_id(t.src_gpu);
+                const gpu_id_t trg = context->get_device_id(t.trg_gpu);
+                const auto stream  = context->get_streams(t.src_gpu)[t.trg_gpu];
+                cudaSetDevice(src);
+                const size_t size = t.len * sizeof(value_t);
+                value_t * from = srcs[t.src_gpu] + t.src_pos;
+                value_t * to   = dsts[t.trg_gpu] + t.trg_pos;
 
-        for(const transfer& t : transfers) {
-            const gpu_id_t src = context->get_device_id(t.src_gpu);
-            const gpu_id_t trg = context->get_device_id(t.trg_gpu);
-            const auto stream  = context->get_streams(t.src_gpu)[t.trg_gpu];
-            cudaSetDevice(src);
-            const size_t size = t.len * sizeof(value_t);
-            value_t * from = srcs[t.src_gpu] + t.src_pos;
-            value_t * to   = dsts[t.trg_gpu] + t.trg_pos;
+                cudaMemcpyPeerAsync(to, trg, from, src, size, stream);
+            } CUERR
 
-            cudaMemcpyPeerAsync(to, trg, from, src, size, stream);
-        } CUERR
-
-        return true;
-    }
+            return true;
+        }
+    };
 
 public:
     template <
@@ -191,7 +188,8 @@ public:
         const std::vector<index_t  >& srcs_lens,        // src_len[k] is length of src[k]
         std::vector<value_t *>& dsts,                   // dst[k] resides on device_ids[k]
         const std::vector<index_t  >& dsts_lens,        // dst_len[k] is length of dst[k]
-        const std::vector<std::vector<table_t> >& send_counts // [src_gpu, partition]
+        const std::vector<std::vector<table_t> >& send_counts, // [src_gpu, partition]
+        bool verbose = false
     ) const {
         if (!plan_valid) return false;
 
@@ -236,13 +234,17 @@ public:
             transfers.push_back(sequence.seq, sequence.size);
         }
 
+        if(verbose) {
+            for (size_t p = 0; p < num_phases; ++p) {
+                transfers.show_phase(p);
+            }
+        }
         for (size_t p = 0; p < num_phases; ++p) {
-            // show_phase(transfers.phases[p]);
             if(!check_size(transfers.phases_offsets[p], dsts_lens)) return false;
         }
 
         for (size_t p = 0; p < num_phases; ++p) {
-            execute_phase(transfers.phases[p], srcs, dsts);
+            transfers.execute_phase(p, srcs, dsts);
 
             if (p < num_phases-1) {
                 // swap srcs and dsts for next phase
@@ -258,10 +260,6 @@ public:
 
     gpu_id_t get_num_devices () const noexcept {
         return context->get_num_devices();
-    }
-
-    void print_connectivity_matrix () const noexcept {
-        context->print_connectivity_matrix();
     }
 
     void sync () const noexcept {
