@@ -56,16 +56,27 @@ public:
     }
 
 public:
+    /**
+     * Execute scatter asynchronously using the given context.
+     * The lenghts of the parameters have to match the context.
+     * @param src pointer to source array. should reside on device_ids[main_gpu].
+     * @param src_len src_len is length of src array.
+     * @param send_counts send_counts[k] elements are sent to device_ids[k]
+     * @param dsts pointers to destination arrays. dsts[k] array should reside on device_ids[k].
+     * @param dsts_len dsts_len[k] is length of dsts[k] array.
+     * @param verbose if true, show details for each transfer.
+     * @return true if executed successfully.
+     */
     template <
         typename value_t,
         typename index_t,
         typename table_t>
     bool execAsync (
-        value_t * const src,                     // src resides on device_ids[main_gpu]
-        const index_t src_len,                   // src_len is length of src
-        const std::vector<table_t  >& send_counts,     // send send_counts[k] elements to device_ids[k]
-        const std::vector<value_t *>& dsts,      // dsts[k] resides on device_ids[k]
-        const std::vector<index_t  >& dsts_lens,  // dsts_len[k] is length of dsts[k]
+        value_t * src,
+        const index_t src_len,
+        const std::vector<table_t  >& send_counts,
+        const std::vector<value_t *>& dsts,
+        const std::vector<index_t  >& dsts_lens,
         bool verbose = false
     ) const {
 

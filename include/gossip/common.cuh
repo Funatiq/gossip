@@ -6,6 +6,7 @@
 #include "context.cuh"
 
 namespace gossip {
+    // shared between scatter, gather, all_to_all_async
 
     struct transfer {
         const gpu_id_t src_gpu;

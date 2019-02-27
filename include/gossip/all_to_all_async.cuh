@@ -54,18 +54,31 @@ public:
     }
 
 public:
+    /**
+     * Execute scatter asynchronously using the given context.
+     * The lenghts of the parameters have to match the context.
+     * @param srcs pointers to source arrays. srcs[k] array should reside on device_ids[k].
+     * @param srcs_len srcs_len[k] is length of srcs[k] array.
+     * @param dsts pointers to destination arrays. dsts[k] array should reside on device_ids[k].
+     * @param dsts_len dsts_len[k] is length of dsts[k] array.
+     * @param bufs pointers to buffer arrays. bufs[k] array should reside on device_ids[k].
+     * @param bufs_len bufs_len[k] is length of bufs[k] array.
+     * @param send_counts send_counts[k][l] elements are sent to from device_ids[k] to device_ids[l].
+     * @param verbose if true, show details for each transfer.
+     * @return true if executed successfully.
+     */
     template <
         typename value_t,
         typename index_t,
         typename table_t>
     bool execAsync (
-        std::vector<value_t *>& srcs,                   // src[k] resides on device_ids[k]
-        const std::vector<index_t  >& srcs_lens,        // src_len[k] is length of src[k]
-        std::vector<value_t *>& dsts,                   // dst[k] resides on device_ids[k]
-        const std::vector<index_t  >& dsts_lens,        // dst_len[k] is length of dst[k]
-        std::vector<value_t *>& bufs,
+        const std::vector<value_t *>& srcs,
+        const std::vector<index_t  >& srcs_lens,
+        const std::vector<value_t *>& dsts,
+        const std::vector<index_t  >& dsts_lens,
+        const std::vector<value_t *>& bufs,
         const std::vector<index_t  >& bufs_lens,
-        const std::vector<std::vector<table_t> >& send_counts, // [src_gpu, partition]
+        const std::vector<std::vector<table_t> >& send_counts,
         bool verbose = false
     ) const {
         if (!plan_valid) return false;

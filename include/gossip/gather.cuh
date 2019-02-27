@@ -56,16 +56,27 @@ public:
     }
 
 public:
+    /**
+     * Execute gather asynchronously using the given context.
+     * The lenghts of the parameters have to match the context.
+     * @param srcs pointers to source arrays. srcs[k] array should reside on device_ids[k].
+     * @param srcs_len srcs_len[k] is length of srcs[k] array.
+     * @param send_counts send_counts[k] elements are sent from device_ids[k].
+     * @param dst pointer to destination array. should reside on device_ids[main_gpu].
+     * @param dst_len dst_len is length of dst array.
+     * @param verbose if true, show details for each transfer.
+     * @return true if executed successfully.
+     */
     template <
         typename value_t,
         typename index_t,
         typename table_t>
     bool execAsync (
-        const std::vector<value_t *>& srcs,       // srcs[k] resides on device_ids[k]
-        const std::vector<index_t  >& srcs_lens,  // srcs_lens[k] is length of srcs[k]
-        const std::vector<table_t  >& send_counts,      // send send_counts[k] elements to device_ids[main_gpu]
-        value_t * const dst,                            // dst resides on device_ids[main_gpu]
-        const index_t dst_len,                     // dst_len is length of dst
+        const std::vector<value_t *>& srcs,
+        const std::vector<index_t  >& srcs_lens,
+        const std::vector<table_t  >& send_counts,
+        value_t * dst,
+        const index_t dst_len,
         bool verbose = false
     ) const {
         if (!plan_valid) return false;
