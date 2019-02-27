@@ -127,7 +127,7 @@ int main (int argc, char *argv[]) {
 
     double security_factor = 1.5;
 
-    size_t batch_size = 1UL << 5;
+    size_t batch_size = 1UL << 29;
     if(argc == 2)
     {
         batch_size = std::atoll(argv[1]);
