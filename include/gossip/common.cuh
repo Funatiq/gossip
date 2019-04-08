@@ -82,6 +82,9 @@ namespace gossip {
             num_chunks(num_chunks_)
         {}
 
+        transfer_handler(const transfer_handler&) = delete;
+        transfer_handler(transfer_handler&&) = default;
+
         ~transfer_handler() {
             for(auto& e : events)
                 cudaEventDestroy(*e);
