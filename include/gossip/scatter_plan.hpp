@@ -54,7 +54,7 @@ public:
             sequences.emplace_back(std::vector<gpu_id_t>{source,trg});
         }
 
-        transfer_plan_t plan(num_gpus, sequences);
+        transfer_plan_t plan("scatter", num_gpus, sequences);
 
         plan.main_gpu(source);
 

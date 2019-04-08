@@ -57,7 +57,7 @@ public:
         const size_t num_chunks = 1;
         const std::vector<size_t> chunks(num_gpus, 0);
 
-        transfer_plan_t plan(num_gpus, sequences, num_chunks, chunks);
+        transfer_plan_t plan("broadcast", num_gpus, sequences, num_chunks, chunks);
 
         plan.main_gpu(source);
 

@@ -49,7 +49,7 @@ public:
             }
         }
 
-        transfer_plan_t plan(num_gpus, sequences);
+        transfer_plan_t plan("all2all", num_gpus, sequences);
 
         verify_plan(plan);
 

@@ -1,9 +1,22 @@
+#pragma once
+
 #include <iostream>
 #include <cstdint>
 #include "include/gossip.cuh"
 #include "include/cudahelpers/cuda_helpers.cuh"
 
 using gpu_id_t = gossip::gpu_id_t;
+
+#define BIG_CONSTANT(x) (x##LLU)
+__host__ __device__ uint64_t fmix64(uint64_t k) {
+	k ^= k >> 33;
+	k *= BIG_CONSTANT(0xff51afd7ed558ccd);
+	k ^= k >> 33;
+	k *= BIG_CONSTANT(0xc4ceb9fe1a85ec53);
+	k ^= k >> 33;
+
+	return k;
+}
 
 template <typename data_t>
 __global__
@@ -12,6 +25,21 @@ void memset_kernel(data_t * data, size_t capacity, const data_t value)
     for (size_t thid = blockDim.x*blockIdx.x+threadIdx.x; thid < capacity; thid += blockDim.x*gridDim.x)
     {
         data[thid] = value;
+    }
+}
+
+template <
+    typename value_t,
+    typename index_t> __global__
+void generate_data(
+    value_t * data,
+    index_t const length,
+    index_t const offset
+) {
+    const uint64_t thid = blockDim.x*blockIdx.x+threadIdx.x;
+
+    for (uint64_t i = thid; i < length; i += blockDim.x*gridDim.x) {
+        data[i] = fmix64(offset+i+1);
     }
 }
 
@@ -33,17 +61,6 @@ void validate(
             printf("ERROR on gpu %lu at index %lu: %lu with predicate %lu \n",
                     uint64_t(device_id-1), i, uint64_t(data[i]), predicate(data[i]));
 
-}
-
-#define BIG_CONSTANT(x) (x##LLU)
-__host__ __device__ uint64_t fmix64(uint64_t k) {
-	k ^= k >> 33;
-	k *= BIG_CONSTANT(0xff51afd7ed558ccd);
-	k ^= k >> 33;
-	k *= BIG_CONSTANT(0xc4ceb9fe1a85ec53);
-	k ^= k >> 33;
-
-	return k;
 }
 
 template<
@@ -74,8 +91,6 @@ void run_multisplit_all2all(
     context.sync_hard();
     TIMERSTOP(malloc_devices)
 
-    context.sync_all_streams();
-
     TIMERSTART(zero_gpu_buffers)
     const data_t init_data = 0;
     for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu){
@@ -93,43 +108,26 @@ void run_multisplit_all2all(
 
     std::cout << "INFO: " << sizeof(data_t)*batch_size*num_gpus << " bytes (all2all)" << std::endl;
 
-    TIMERSTART(malloc_host)
-    data_t * data_h = nullptr;
-    cudaMallocHost(&data_h, sizeof(data_t)*batch_size*num_gpus); CUERR
-    TIMERSTOP(malloc_host)
-
-    TIMERSTART(init_host_data)
-    # pragma omp parallel for
-    for (size_t i = 0; i < batch_size*num_gpus; i++)
-        data_h[i] = fmix64(i+1);
-    TIMERSTOP(init_host_data)
-
-    // this array partitions the widthcontext.get_device_id(gpu) many elements into
-    // num_gpus many portions of approximately equal size
     std::vector<data_t *> srcs(num_gpus);
     std::vector<data_t *> dsts(num_gpus);
     std::vector<size_t  > lens(num_gpus);
 
-    for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
-        const size_t lower = gpu*batch_size;
-        const size_t upper = lower+batch_size;
-
-        srcs[gpu] = data_h+lower;
-        dsts[gpu] = ying[gpu];
-        lens[gpu] = upper-lower;
-    }
-
-    TIMERSTART(H2D_async)
-    // move batches to buffer ying
-    point2point.execH2DAsync(srcs, dsts, lens);
-    point2point.sync();
-    TIMERSTOP(H2D_async)
-
-    // perform multisplit on each device
+    // generate batch of data on each device
+    TIMERSTART(init_data)
     for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
         srcs[gpu] = ying[gpu];
         dsts[gpu] = yang[gpu];
+        lens[gpu] = batch_size;
+
+        cudaSetDevice(context.get_device_id(gpu));
+        generate_data<<<256, 1024, 0, context.get_streams(gpu)[0]>>>
+            (srcs[gpu], lens[gpu], gpu*batch_size);
     }
+    context.sync_all_streams();
+    CUERR
+    TIMERSTOP(init_data)
+
+    // perform multisplit on each device
     auto part_hash = [=] DEVICEQUALIFIER (const data_t& x){
         return (x % num_gpus) + 1;
     };
@@ -185,8 +183,6 @@ void run_multisplit_all2all(
         cudaFree(ying[gpu]);        CUERR
         cudaFree(yang[gpu]);        CUERR
     } CUERR
-
-    cudaFreeHost(data_h);           CUERR
 }
 
 template<
@@ -239,45 +235,28 @@ void run_multisplit_all2all_async(
     CUERR
     TIMERSTOP(zero_gpu_buffers)
 
-    std::cout << "INFO: " << sizeof(data_t)*batch_size*num_gpus << " bytes (all2all)" << std::endl;
+    std::cout << "INFO: " << sizeof(data_t)*batch_size*num_gpus << " bytes (all2all_async)" << std::endl;
 
-    TIMERSTART(malloc_host)
-    data_t * data_h = nullptr;
-    cudaMallocHost(&data_h, sizeof(data_t)*batch_size*num_gpus); CUERR
-    TIMERSTOP(malloc_host)
-
-    TIMERSTART(init_host_data)
-    # pragma omp parallel for
-    for (size_t i = 0; i < batch_size*num_gpus; i++)
-        data_h[i] = fmix64(i+1);
-    TIMERSTOP(init_host_data)
-
-    // this array partitions the widthcontext.get_device_id(gpu) many elements into
-    // num_gpus many portions of approximately equal size
     std::vector<data_t *> srcs(num_gpus);
     std::vector<data_t *> dsts(num_gpus);
     std::vector<size_t  > lens(num_gpus);
 
-    for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
-        const size_t lower = gpu*batch_size;
-        const size_t upper = lower+batch_size;
-
-        srcs[gpu] = data_h+lower;
-        dsts[gpu] = ying[gpu];
-        lens[gpu] = upper-lower;
-    }
-
-    TIMERSTART(H2D_async)
-    // move batches to buffer ying
-    point2point.execH2DAsync(srcs, dsts, lens);
-    point2point.sync();
-    TIMERSTOP(H2D_async)
-
-    // perform multisplit on each device
+    // generate batch of data on each device
+    TIMERSTART(init_data)
     for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
         srcs[gpu] = ying[gpu];
         dsts[gpu] = yang[gpu];
+        lens[gpu] = batch_size;
+
+        cudaSetDevice(context.get_device_id(gpu));
+        generate_data<<<256, 1024, 0, context.get_streams(gpu)[0]>>>
+            (srcs[gpu], lens[gpu], gpu*batch_size);
     }
+    context.sync_all_streams();
+    CUERR
+    TIMERSTOP(init_data)
+
+    // perform multisplit on each device
     auto part_hash = [=] DEVICEQUALIFIER (const data_t& x){
         return (x % num_gpus) + 1;
     };
@@ -310,10 +289,10 @@ void run_multisplit_all2all_async(
 
     // all2all.show_plan();
 
-    TIMERSTART(all2all)
+    TIMERSTART(all2all_async)
     all2all.execAsync(srcs, srcs_lens, dsts, dsts_lens, bufs, bufs_lens, table);
     all2all.sync();
-    TIMERSTOP(all2all)
+    TIMERSTOP(all2all_async)
 
     TIMERSTART(validate)
     std::vector<size_t> lengths(num_gpus);
@@ -338,8 +317,6 @@ void run_multisplit_all2all_async(
         cudaFree(yang[gpu]);        CUERR
         cudaFree(yong[gpu]);        CUERR
     } CUERR
-
-    cudaFreeHost(data_h);           CUERR
 }
 
 template<
@@ -390,44 +367,28 @@ void run_multisplit_scatter_gather(
     CUERR
     TIMERSTOP(zero_gpu_buffers)
 
-    std::cout << "INFO: " << sizeof(data_t)*batch_size << " bytes (scatter/gather)" << std::endl;
-
-    TIMERSTART(malloc_host)
-    data_t * data_h = nullptr;
-    cudaMallocHost(&data_h, sizeof(data_t)*batch_size); CUERR
-    TIMERSTOP(malloc_host)
-
-    TIMERSTART(init_host_data)
-    # pragma omp parallel for
-    for (size_t i = 0; i < batch_size; i++)
-        data_h[i] = fmix64(i+1);
-    TIMERSTOP(init_host_data)
+    std::cout << "INFO: " << sizeof(data_t)*batch_size << " bytes (scatter_gather)" << std::endl;
 
     std::vector<data_t *> srcs(num_gpus);
     std::vector<data_t *> dsts(num_gpus);
     std::vector<size_t  > lens(num_gpus);
 
-    // copy batch to main device
-    // all other devices get nothing
-    lens[main_gpu] = batch_size;
-
-    for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
-        srcs[gpu] = data_h;
-        dsts[gpu] = ying[gpu];
-    }
-
-    TIMERSTART(H2D_async)
-    // move batches to buffer ying
-    point2point.execH2DAsync(srcs, dsts, lens);
-    point2point.sync();
-    TIMERSTOP(H2D_async)
-
-
-    // perform multisplit on main device
+    // generate batch of data on main device
     for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
         srcs[gpu] = ying[gpu];
         dsts[gpu] = yang[gpu];
     }
+    lens[main_gpu] = batch_size;
+
+    TIMERSTART(init_data)
+    cudaSetDevice(context.get_device_id(main_gpu));
+    generate_data<<<256, 1024, 0, context.get_streams(main_gpu)[0]>>>
+        (srcs[main_gpu], lens[main_gpu], size_t(0));
+    context.sync_all_streams();
+    CUERR
+    TIMERSTOP(init_data)
+
+    // perform multisplit on main device
     auto part_hash = [=] HOSTDEVICEQUALIFIER (const data_t& x){
         return (x % num_gpus) + 1;
     };
@@ -520,8 +481,6 @@ void run_multisplit_scatter_gather(
         cudaFree(ying[gpu]);        CUERR
         cudaFree(yang[gpu]);        CUERR
     } CUERR
-
-    cudaFreeHost(data_h);           CUERR
 }
 
 template<
@@ -572,42 +531,26 @@ void run_multisplit_broadcast(
 
     std::cout << "INFO: " << sizeof(data_t)*batch_size << " bytes" << std::endl;
 
-    TIMERSTART(malloc_host)
-    data_t * data_h = nullptr;
-    cudaMallocHost(&data_h, sizeof(data_t)*batch_size); CUERR
-    TIMERSTOP(malloc_host)
-
-    TIMERSTART(init_host_data)
-    # pragma omp parallel for
-    for (size_t i = 0; i < batch_size; i++)
-        data_h[i] = fmix64(i+1);
-    TIMERSTOP(init_host_data)
-
     std::vector<data_t *> srcs(num_gpus);
     std::vector<data_t *> dsts(num_gpus);
     std::vector<size_t  > lens(num_gpus);
 
-    // copy batch to main device
-    // all other devices get nothing
-    lens[main_gpu] = batch_size;
-
-    for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
-        srcs[gpu] = data_h;
-        dsts[gpu] = ying[gpu];
-    }
-
-    TIMERSTART(H2D_async)
-    // move batches to buffer ying
-    point2point.execH2DAsync(srcs, dsts, lens);
-    point2point.sync();
-    TIMERSTOP(H2D_async)
-
-
-    // perform multisplit on main device
+    // generate batch of data on main device
     for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
         srcs[gpu] = ying[gpu];
         dsts[gpu] = yang[gpu];
     }
+    lens[main_gpu] = batch_size;
+
+    TIMERSTART(init_data)
+    cudaSetDevice(context.get_device_id(main_gpu));
+    generate_data<<<256, 1024, 0, context.get_streams(main_gpu)[0]>>>
+        (srcs[main_gpu], lens[main_gpu], size_t(0));
+    context.sync_all_streams();
+    CUERR
+    TIMERSTOP(init_data)
+
+    // perform multisplit on main device
     auto part_hash = [=] HOSTDEVICEQUALIFIER (const data_t& x){
         return (x % num_gpus) + 1;
     };
@@ -668,6 +611,4 @@ void run_multisplit_broadcast(
         cudaFree(ying[gpu]);        CUERR
         cudaFree(yang[gpu]);        CUERR
     } CUERR
-
-    cudaFreeHost(data_h);           CUERR
 }

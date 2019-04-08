@@ -14,6 +14,7 @@ class transfer_plan_t {
         size_t size;
     };
 
+    std::string type_;
     gpu_id_t num_gpus_;
     gpu_id_t main_gpu_;
     size_t num_steps_;
@@ -24,9 +25,11 @@ class transfer_plan_t {
 
 public:
     transfer_plan_t(
+        const std::string type,
         const gpu_id_t num_gpus,
         const std::vector<std::vector<gpu_id_t>>& sequences
     ) :
+        type_(type),
         num_gpus_(num_gpus),
         main_gpu_(gpu_id_t(-1)),
         num_steps_(0),
@@ -41,11 +44,13 @@ public:
     }
 
     transfer_plan_t(
+        const std::string type,
         const gpu_id_t num_gpus,
         const std::vector<std::vector<gpu_id_t>>& sequences,
         const size_t num_chunks,
         const std::vector<size_t>& transfer_sizes
     ) :
+        type_(type),
         num_gpus_(num_gpus),
         main_gpu_(gpu_id_t(-1)),
         num_steps_(0),
@@ -64,6 +69,10 @@ public:
     }
 
 public:
+    std::string type() const noexcept {
+        return type_;
+    }
+
     gpu_id_t num_gpus() const noexcept {
         return num_gpus_;
     }
@@ -114,19 +123,19 @@ public:
 
     void show_plan() const {
         if(!valid_)
-            std::cout << "WARNING: invalid plan\n";
+            std::cout << "ERROR: invalid plan\n";
 
-        std::cout << "Transfer plan for " << uint32_t(num_gpus_) << " gpus\n";
-        std::cout << "Transfer " << uint32_t(num_chunks_) << " chunks in " << num_steps_ << " steps\n";
+        std::cout << "INFO: Transfer plan for " << uint32_t(num_gpus_) << " gpus\n";
+        std::cout << "INFO: Transfer " << uint32_t(num_chunks_) << " chunks in " << num_steps_ << " steps\n";
 
         if(synchronized()) {
-            std::cout << "Synchronize after steps ";
+            std::cout << "INFO: Plan synchronizes after steps ";
             for(const auto& s : sync_steps_)
                 std::cout << s << ' ';
             std::cout << '\n';
         }
         else {
-            std::cout << "Without synchronization\n";
+            std::cout << "INFO: Plan is without synchronization\n";
         }
 
         for (const auto& sequence : transfer_sequences_) {
