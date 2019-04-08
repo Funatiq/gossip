@@ -1,5 +1,6 @@
 #pragma once
 
+#include <iostream>
 #include "config.h"
 #include "error_checking.hpp"
 #include "context.cuh"
@@ -28,6 +29,7 @@ public:
         const std::vector<value_t *>& dsts,
         const std::vector<index_t  >& lens
     ) const {
+        CUERR
         if (!check(srcs.size() == get_num_devices(),
                     "srcs size does not match number of gpus."))
             return false;
@@ -41,6 +43,7 @@ public:
         for (gpu_id_t src_gpu = 0; src_gpu < get_num_devices(); ++src_gpu) {
             if (lens[src_gpu] > 0) {
                 cudaSetDevice(context->get_device_id(src_gpu));
+
                 cudaMemcpyAsync(dsts[src_gpu], srcs[src_gpu],
                                 sizeof(value_t)*lens[src_gpu],
                                 cudaMemcpyDirection,

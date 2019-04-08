@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <assert.h>
 
 #include "plan_parser.hpp"
 #include "json.hpp"
@@ -10,6 +11,7 @@ using gpu_id_t = gossip::gpu_id_t;
 
 gossip::transfer_plan_t
 parse_plan(const char* filename) {
+    std::string type = "";
     gpu_id_t num_gpus = 0;
     gpu_id_t main_gpu = -1;
     size_t num_steps = 0;
@@ -19,15 +21,21 @@ parse_plan(const char* filename) {
 
     std::ifstream ifs(filename);
     json json_plan;
+
     if(ifs.good())
         ifs >> json_plan;
     else {
         std::cerr << "error reading " << filename << std::endl;
-        return gossip::transfer_plan_t{num_gpus,transfer_sequences};
+        auto plan = gossip::transfer_plan_t{type, num_gpus,transfer_sequences};
+        return plan;
     }
 
     // get plan from json
-    auto it = json_plan.find("num_gpus");
+    auto it = json_plan.find("type");
+    if(it != json_plan.end())
+        type = *it;
+
+    it = json_plan.find("num_gpus");
     if(it != json_plan.end())
         num_gpus = *it;
 
@@ -56,7 +64,7 @@ parse_plan(const char* filename) {
             transfer_sizes.push_back(seq);
         }
 
-    auto plan = gossip::transfer_plan_t{num_gpus, transfer_sequences, num_chunks, transfer_sizes};
+    auto plan = gossip::transfer_plan_t{type, num_gpus, transfer_sequences, num_chunks, transfer_sizes};
 
     plan.main_gpu(main_gpu);
 
