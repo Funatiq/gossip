@@ -47,7 +47,6 @@ public:
                      transfer_plan.valid();
     }
 
-public:
     void show_plan() const {
         if(!plan_valid)
             std::cout << "WARNING: plan does fit number of gpus\n";
@@ -55,42 +54,13 @@ public:
         transfer_plan.show_plan();
     }
 
-public:
-    /**
-     * Execute gather asynchronously using the given context.
-     * The lenghts of the parameters have to match the context.
-     * @param srcs pointers to source arrays. srcs[k] array should reside on device_ids[k].
-     * @param srcs_len srcs_len[k] is length of srcs[k] array.
-     * @param send_counts send_counts[k] elements are sent from device_ids[k].
-     * @param dst pointer to destination array. should reside on device_ids[main_gpu].
-     * @param dst_len dst_len is length of dst array.
-     * @param verbose if true, show details for each transfer.
-     * @return true if executed successfully.
-     */
+private:
     template <
-        typename value_t,
-        typename index_t,
         typename table_t>
-    bool execAsync (
-        const std::vector<value_t *>& srcs,
-        const std::vector<index_t  >& srcs_lens,
+    transfer_handler<table_t> makeTransferHandler (
         const std::vector<table_t  >& send_counts,
-        value_t * dst,
-        const index_t dst_len,
         bool verbose = false
     ) const {
-        if (!plan_valid) return false;
-
-        if (!check(srcs.size() == get_num_devices(),
-                    "srcs size does not match number of gpus."))
-            return false;
-        if (!check(srcs_lens.size() == get_num_devices(),
-                    "srcs_lens size does not match number of gpus."))
-            return false;
-        if (!check(send_counts.size() == get_num_devices(),
-                    "table size does not match number of gpus."))
-            return false;
-
         const auto main_gpu   = transfer_plan.main_gpu();
         const auto num_phases = transfer_plan.num_steps();
         const auto num_chunks = transfer_plan.num_chunks();
@@ -125,23 +95,66 @@ public:
             }
         }
 
+        return transfers;
+    }
+
+public:
+    /**
+     * Execute gather asynchronously using the given context.
+     * The lenghts of the parameters have to match the context.
+     * @param srcs pointers to source arrays. srcs[k] array should reside on device_ids[k].
+     * @param srcs_len srcs_len[k] is length of srcs[k] array.
+     * @param send_counts send_counts[k] elements are sent from device_ids[k].
+     * @param dst pointer to destination array. should reside on device_ids[main_gpu].
+     * @param dst_len dst_len is length of dst array.
+     * @param verbose if true, show details for each transfer.
+     * @return true if executed successfully.
+     */
+    template <
+        typename value_t,
+        typename index_t,
+        typename table_t>
+    bool execAsync (
+        const std::vector<value_t *>& srcs,
+        const std::vector<index_t  >& srcs_lens,
+        const std::vector<table_t  >& send_counts,
+        value_t * dst,
+        const index_t dst_len,
+        bool verbose = false
+    ) const {
+        if (!check(plan_valid, "Invalid plan. Abort."))
+            return false;
+
+        if (!check(srcs.size() == get_num_devices(),
+                    "srcs size does not match number of gpus."))
+            return false;
+        if (!check(srcs_lens.size() == get_num_devices(),
+                    "srcs_lens size does not match number of gpus."))
+            return false;
+        if (!check(send_counts.size() == get_num_devices(),
+                    "table size does not match number of gpus."))
+            return false;
+
+        transfer_handler<table_t> transfers = makeTransferHandler(send_counts, verbose);
+
         // check destination array size
-        if(!check_size(trg_displacements.back()[main_gpu], dst_len))
+        if(!check_size(transfers.trg_offsets.back()[transfer_plan.main_gpu()], dst_len))
             return false;
         std::vector<value_t *> dsts(get_num_devices());
         dsts[transfer_plan.main_gpu()] = dst;
 
         // buffer behind local sources
-        for (gpu_id_t i = 0; i < get_num_devices(); ++i)
-            if(!check_size(transfers.src_offsets[i][main_gpu] + transfers.aux_offsets[i], srcs_lens[i]))
+        for (gpu_id_t i = 0; i < get_num_devices(); ++i) {
+            if(!check_size(transfers.src_offsets[i][transfer_plan.main_gpu()] + transfers.aux_offsets[i],
+                           srcs_lens[i]))
                 return false;
+        }
         std::vector<value_t *> bufs(srcs);
         for (gpu_id_t i = 0; i < get_num_devices(); ++i)
             bufs[i] += send_counts[i];
 
-        for (size_t p = 0; p < num_phases; ++p) {
+        for (size_t p = 0; p < transfers.num_phases; ++p)
             transfers.execute_phase(p, srcs, dsts, bufs);
-        }
 
         return true;
     }

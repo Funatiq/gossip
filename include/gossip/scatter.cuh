@@ -47,12 +47,55 @@ public:
                      transfer_plan.valid();
     }
 
-public:
     void show_plan() const {
         if(!plan_valid)
             std::cout << "WARNING: plan does fit number of gpus\n";
 
         transfer_plan.show_plan();
+    }
+
+private:
+    template <
+        typename table_t>
+    transfer_handler<table_t> makeTransferHandler (
+        const std::vector<table_t  >& send_counts,
+        bool verbose = false
+    ) const {
+        const auto main_gpu   = transfer_plan.main_gpu();
+        const auto num_phases = transfer_plan.num_steps();
+        const auto num_chunks = transfer_plan.num_chunks();
+
+        std::vector<std::vector<size_t> > src_displacements(get_num_devices(), std::vector<size_t>(get_num_devices()+1));
+        for (gpu_id_t part = 0; part < get_num_devices(); ++part) {
+            // exclusive scan to get src_displacements
+            src_displacements[main_gpu][part+1] = send_counts[part] + src_displacements[main_gpu][part];
+        }
+
+        std::vector<std::vector<size_t> > trg_displacements(get_num_devices()+1, std::vector<size_t>(get_num_devices()));
+
+        std::vector<std::vector<table_t> > all_send_counts(get_num_devices(), std::vector<table_t>(get_num_devices()));
+        for (gpu_id_t part = 0; part < get_num_devices(); ++part) {
+            all_send_counts[main_gpu][part] = send_counts[part];
+        }
+
+        transfer_handler<table_t> transfers(context,
+                                            src_displacements,
+                                            trg_displacements,
+                                            all_send_counts,
+                                            num_phases, num_chunks);
+
+        // prepare transfers according to transfer_plan
+        for (const auto& sequence : transfer_plan.transfer_sequences()) {
+            transfers.push_back(sequence.seq, sequence.size, verbose);
+        }
+
+        if(verbose) {
+            for (size_t p = 0; p < num_phases; ++p) {
+                transfers.show_phase(p);
+            }
+        }
+
+        return transfers;
     }
 
 public:
@@ -79,8 +122,8 @@ public:
         const std::vector<index_t  >& dsts_lens,
         bool verbose = false
     ) const {
-
-        if (!plan_valid) return false;
+        if (!check(plan_valid, "Invalid plan. Abort."))
+            return false;
 
         if (!check(dsts.size() == get_num_devices(),
                     "dsts size does not match number of gpus."))
@@ -92,57 +135,26 @@ public:
                     "table size does not match number of gpus."))
             return false;
 
-        const auto main_gpu   = transfer_plan.main_gpu();
-        const auto num_phases = transfer_plan.num_steps();
-        const auto num_chunks = transfer_plan.num_chunks();
-
-        std::vector<std::vector<size_t> > src_displacements(get_num_devices(), std::vector<size_t>(get_num_devices()+1));
-        for (gpu_id_t part = 0; part < get_num_devices(); ++part) {
-            // exclusive scan to get src_displacements
-            src_displacements[main_gpu][part+1] = send_counts[part] + src_displacements[main_gpu][part];
-        }
-
-        std::vector<std::vector<size_t> > trg_displacements(get_num_devices()+1, std::vector<size_t>(get_num_devices()));
-
-        std::vector<std::vector<table_t> > sizes(get_num_devices(), std::vector<table_t>(get_num_devices()));
-        for (gpu_id_t part = 0; part < get_num_devices(); ++part) {
-            sizes[main_gpu][part] = send_counts[part];
-        }
-
-        transfer_handler<table_t> transfers(context,
-                                            src_displacements,
-                                            trg_displacements,
-                                            sizes,
-                                            num_phases, num_chunks);
-
-        // prepare transfers according to transfer_plan
-        for (const auto& sequence : transfer_plan.transfer_sequences()) {
-            transfers.push_back(sequence.seq, sequence.size, verbose);
-        }
-
-        if(verbose) {
-            for (size_t p = 0; p < num_phases; ++p) {
-                transfers.show_phase(p);
-            }
-        }
+        transfer_handler<table_t> transfers = makeTransferHandler(send_counts, verbose);
 
         // check source array size
-        if (!check_size(src_displacements[main_gpu].back(), src_len))
+        if (!check_size(transfers.src_offsets[transfer_plan.main_gpu()].back(), src_len))
             return false;
         std::vector<value_t *> srcs(get_num_devices());
         srcs[transfer_plan.main_gpu()] = src;
 
         // buffer behind local destinations
-        for (gpu_id_t i = 0; i < get_num_devices(); ++i)
-            if(!check_size(transfers.trg_offsets[main_gpu][i] + transfers.aux_offsets[i], dsts_lens[i]))
+        for (gpu_id_t i = 0; i < get_num_devices(); ++i) {
+            if(!check_size(transfers.trg_offsets[transfer_plan.main_gpu()][i] + transfers.aux_offsets[i],
+                           dsts_lens[i]))
                 return false;
+        }
         std::vector<value_t *> bufs(dsts);
         for (gpu_id_t i = 0; i < get_num_devices(); ++i)
             bufs[i] += send_counts[i];
 
-        for (size_t p = 0; p < num_phases; ++p) {
+        for (size_t p = 0; p < transfers.num_phases; ++p)
             transfers.execute_phase(p, srcs, dsts, bufs);
-        }
 
         return true;
     }
