@@ -117,7 +117,7 @@ public:
         for (const auto& counts : send_counts) {
             if (!check(counts.size() == get_num_devices(),
                         "table size does not match number of gpus."))
-                return false;
+                return {};
         }
 
         transfer_handler<table_t> transfers = makeTransferHandler(send_counts, verbose);

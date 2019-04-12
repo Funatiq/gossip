@@ -267,7 +267,7 @@ void run_multisplit_all2all_async(
     multisplit.sync();
     TIMERSTOP(multisplit)
 
-    std::cout << std::endl << "Partition Table:" << std::endl;
+    std::cout << "\nPartition Table:" << std::endl;
     for (gpu_id_t src = 0; src < num_gpus; src++)
         for (gpu_id_t trg = 0; trg < num_gpus; trg++)
             std::cout << table[src][trg] << (trg+1 == num_gpus ? "\n" : " ");
@@ -288,6 +288,13 @@ void run_multisplit_all2all_async(
     }
 
     // all2all.show_plan();
+
+    std::cout << "Required buffer sizes:" << std::endl;
+    std::vector<size_t> bufs_lens_calc = all2all.calcBufferLengths(table);
+    for (const auto& buf_len_calc : bufs_lens_calc) {
+        std::cout << buf_len_calc << ' ';
+    }
+    std::cout << '\n' << std::endl;
 
     TIMERSTART(all2all_async)
     all2all.execAsync(srcs, srcs_lens, dsts, dsts_lens, bufs, bufs_lens, table);
@@ -399,7 +406,7 @@ void run_multisplit_scatter_gather(
     multisplit.sync();
     TIMERSTOP(multisplit)
 
-    std::cout << std::endl << "Partition Table:" << std::endl;
+    std::cout << "\nPartition Table:" << std::endl;
     for (gpu_id_t src = 0; src < num_gpus; src++)
         for (gpu_id_t trg = 0; trg < num_gpus; trg++)
             std::cout << table[src][trg] << (trg+1 == num_gpus ? "\n" : " ");
@@ -561,7 +568,7 @@ void run_multisplit_broadcast(
     multisplit.sync();
     TIMERSTOP(multisplit)
 
-    std::cout << std::endl << "Partition Table:" << std::endl;
+    std::cout << "\nPartition Table:" << std::endl;
     for (gpu_id_t src = 0; src < num_gpus; src++)
         for (gpu_id_t trg = 0; trg < num_gpus; trg++)
             std::cout << table[src][trg] << (trg+1 == num_gpus ? "\n" : " ");
