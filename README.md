@@ -2,7 +2,7 @@
 
 Gossip supports scatter, gather and all-to-all communication. To execute one of the communication primitives a transfer plan is needed. Use the provided [scripts](scripts) to generate optimized plans for your specific NVLink topology. The [plans directory](plans) contains optimized plans for typical 4 GPU configurations ([P100](gossip/plans/p100_quad_opt/) and [V100](gossip/plans/v100_quad_opt/)) as well as 8 GPU [DGX-1 Volta](gossip/plans/dgx1_opt).
 
-Gossip will be presented at ICPP '19. A link to the paper will follow.
+Gossip was presented at [ICPP '19](https://dl.acm.org/citation.cfm?id=3337889).
 
 ## Example
 
