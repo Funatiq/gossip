@@ -2,6 +2,8 @@
 	path = include/cudahelpers
     url = https://github.com/gravitino/cudahelpers.git
     ignore = dirty
+	branch = master
 [submodule "include/clipp"]
 	path = include/clipp
 	url = https://github.com/muellan/clipp.git
+	branch = master
