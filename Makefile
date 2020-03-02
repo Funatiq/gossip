@@ -1,7 +1,7 @@
 NVCC=nvcc
 NVCCGENCODE = -gencode arch=compute_60,code=sm_60 \
               -gencode arch=compute_70,code=sm_70
-			
+
 NVCCFLAGS = $(NVCCGENCODE) -O3 -std=c++14 --expt-extended-lambda -Xcompiler="-fopenmp" -Wreorder -lineinfo
 
 HEADERS = include/gossip.cuh \
@@ -22,12 +22,24 @@ HEADERS = include/gossip.cuh \
 		  include/gossip/scatter.cuh \
 		  include/gossip/transfer_plan.hpp
 
+BUILD_DIR = build
+
 .PHONY: all clean
 
 all: execute
 
-execute: execute.cu executor.cuh $(HEADERS) include/plan_parser.cpp include/plan_parser.hpp
-	$(NVCC) $(NVCCFLAGS) include/plan_parser.cpp execute.cu -o execute
+execute: $(BUILD_DIR) execute.cu executor.cuh $(HEADERS) include/plan_parser.hpp $(BUILD_DIR)/plan_parser.o $(BUILD_DIR)/execute.o
+	$(NVCC) $(NVCCFLAGS) $(BUILD_DIR)/plan_parser.o $(BUILD_DIR)/execute.o -o execute
+
+$(BUILD_DIR)/execute.o: execute.cu executor.cuh $(HEADERS) include/plan_parser.hpp
+	$(NVCC) $(NVCCFLAGS) -c execute.cu -o $(BUILD_DIR)/execute.o
+
+$(BUILD_DIR)/plan_parser.o: include/plan_parser.cpp include/plan_parser.hpp
+	$(NVCC) $(NVCCFLAGS) -c include/plan_parser.cpp -o $(BUILD_DIR)/plan_parser.o
 
 clean:
+	rm -rf $(BUILD_DIR)
 	rm -rf execute
+
+$(BUILD_DIR):
+	mkdir $(BUILD_DIR)
