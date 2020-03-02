@@ -276,9 +276,10 @@ public:
                 transfers.show_phase(p);
             }
         }
-        for (size_t p = 0; p < num_phases; ++p) {
+        for (size_t p = 0; p < num_phases-1; ++p) {
             if(!check_size(transfers.phases_offsets[p], dsts_lens)) return false;
         }
+        if(!check_size(transfers.trg_offsets[get_num_devices()], dsts_lens)) return false;
 
         for (size_t p = 0; p < num_phases; ++p) {
             transfers.execute_phase(p, srcs, dsts);
