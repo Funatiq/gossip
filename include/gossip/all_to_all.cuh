@@ -112,14 +112,17 @@ private:
         ) :
             context(context_),
             src_offsets(src_displacements), // src offsets begin at src displacements
-            phases_offsets(num_phases-1, std::vector<size_t>(context->get_num_devices())),
+            phases_offsets(),
             trg_offsets(trg_displacements), // trg offsets begin at trg displacements
             src_displacements(src_displacements),
             sizes(sizes),
             num_phases(num_phases_),
             phases(num_phases),
             num_chunks(num_chunks_)
-        {}
+        {
+            if(num_phases > 1)
+                phases_offsets.resize(num_phases-1, std::vector<size_t>(context->get_num_devices()));
+        }
 
         bool push_back(
             const std::vector<gpu_id_t>& sequence,
