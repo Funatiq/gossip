@@ -43,6 +43,9 @@ public:
         if(!transfer_plan.valid())
             scatter::verify_plan(transfer_plan);
 
+        check(get_num_devices() == transfer_plan.num_gpus(),
+              "Plan does fit number of gpus of context!");
+
         plan_valid = (get_num_devices() == transfer_plan.num_gpus()) &&
                      transfer_plan.valid();
     }

@@ -41,6 +41,9 @@ public:
         if(!transfer_plan.valid())
             all2all::verify_plan(transfer_plan);
 
+        check(get_num_devices() == transfer_plan.num_gpus(),
+              "Plan does fit number of gpus of context!");
+
         plan_valid = (get_num_devices() == transfer_plan.num_gpus()) &&
                      transfer_plan.valid();
     }
@@ -211,7 +214,8 @@ public:
         const std::vector<std::vector<table_t> >& send_counts, // [src_gpu, partition]
         bool verbose = false
     ) const {
-        if (!plan_valid) return false;
+        if (!check(plan_valid, "Invalid plan. Abort."))
+            return false;
 
         if (!check(srcs.size() == get_num_devices(),
                     "srcs size does not match number of gpus."))

@@ -12,7 +12,7 @@
 template<typename data_t>
 void all2all(
     gossip::transfer_plan_t transfer_plan,
-    const size_t batch_size, 
+    const size_t batch_size,
     const size_t batch_size_secure) {
 
     gossip::all2all::verify_plan(transfer_plan);
@@ -22,6 +22,7 @@ void all2all(
     if(transfer_plan.valid()) {
 
         auto context = std::make_unique< gossip::context_t >(num_gpus);
+        // context->print_connectivity_matrix();
         auto all2all = std::make_unique< gossip::all2all_t >(*context, transfer_plan);
         auto multisplit = std::make_unique< gossip::multisplit_t >(*context);
         auto point2point = std::make_unique< gossip::point2point_t >(*context);
@@ -37,7 +38,7 @@ void all2all(
 template<typename data_t>
 void all2all_async(
     gossip::transfer_plan_t transfer_plan,
-    const size_t batch_size, 
+    const size_t batch_size,
     const size_t batch_size_secure) {
 
     gossip::all2all::verify_plan(transfer_plan);
@@ -47,6 +48,7 @@ void all2all_async(
     if(transfer_plan.valid()) {
 
         auto context = std::make_unique< gossip::context_t >(num_gpus);
+        // context->print_connectivity_matrix();
         auto all2all = std::make_unique< gossip::all2all_async_t >(*context, transfer_plan);
         auto multisplit = std::make_unique< gossip::multisplit_t >(*context);
         auto point2point = std::make_unique< gossip::point2point_t >(*context);
@@ -63,7 +65,7 @@ template<typename data_t>
 void scatter_gather(
     gossip::transfer_plan_t scatter_plan,
     gossip::transfer_plan_t gather_plan,
-    const size_t batch_size, 
+    const size_t batch_size,
     const size_t batch_size_secure) {
 
     gossip::scatter::verify_plan(scatter_plan);
@@ -84,6 +86,7 @@ void scatter_gather(
     if(scatter_plan.valid() && gather_plan.valid()) {
 
         auto context = std::make_unique< gossip::context_t >(num_gpus);
+        // context->print_connectivity_matrix();
         auto point2point = std::make_unique< gossip::point2point_t >(*context);
         auto multisplit = std::make_unique< gossip::multisplit_t >(*context);
         auto scatter = std::make_unique< gossip::scatter_t >(*context, scatter_plan);
@@ -101,7 +104,7 @@ void scatter_gather(
 template<typename data_t>
 void broadcaster(
     gossip::transfer_plan_t transfer_plan,
-    const size_t batch_size, 
+    const size_t batch_size,
     const size_t batch_size_secure) {
 
     gossip::broadcast::verify_plan(transfer_plan);
@@ -111,6 +114,7 @@ void broadcaster(
     if(transfer_plan.valid()) {
 
         auto context = std::make_unique< gossip::context_t >(num_gpus);
+        // context->print_connectivity_matrix();
         auto broadcast = std::make_unique< gossip::broadcast_t >(*context, transfer_plan);
         auto multisplit = std::make_unique< gossip::multisplit_t >(*context);
         auto point2point = std::make_unique< gossip::point2point_t >(*context);
@@ -129,20 +133,20 @@ int main (int argc, char *argv[]) {
     // parse args using https://github.com/muellan/clipp
     using namespace clipp;
     enum class mode {all2all, all2all_async, scatter_gather, broadcast, help};
-    
+
     mode selected;
     double security_factor = 1.5;
     size_t data_size = 28;
     std::string plan_file, scatter_plan_file, gather_plan_file;
-    
-    auto cli = 
+
+    auto cli =
     (
         (
             (
                 (
                     (
-                        command("all2all").set(selected, mode::all2all) | 
-                        command("all2all_async").set(selected, mode::all2all_async) | 
+                        command("all2all").set(selected, mode::all2all) |
+                        command("all2all_async").set(selected, mode::all2all_async) |
                         command("broadcast").set(selected, mode::broadcast)
                     ),
                     value("transfer plan", plan_file)
@@ -158,16 +162,16 @@ int main (int argc, char *argv[]) {
         command("help").set(selected, mode::help)
     );
 
-    if(parse(argc, argv, cli)) 
+    if(parse(argc, argv, cli))
     {
         assert(data_size >= 4);
         data_size = 1UL << data_size;
         size_t data_size_secure = data_size * security_factor;
 
         // execute selected collective
-        switch(selected) 
+        switch(selected)
         {
-            case mode::all2all: 
+            case mode::all2all:
                 std::cout << "RUN: all2all" << std::endl;
                 all2all<data_t>(parse_plan(plan_file.c_str()), data_size, data_size_secure);
                 break;
@@ -183,13 +187,13 @@ int main (int argc, char *argv[]) {
                 std::cout << "RUN: scatter_gather" << std::endl;
                 scatter_gather<data_t>(parse_plan(scatter_plan_file.c_str()), parse_plan(gather_plan_file.c_str()), data_size, data_size_secure);
                 break;
-            case mode::help: 
+            case mode::help:
                 std::cout << make_man_page(cli, "execute").
-                prepend_section("DESCRIPTION", "    test gossip on uniformly distributed data"); 
+                prepend_section("DESCRIPTION", "    test gossip on uniformly distributed data");
                 break;
         }
-    } 
-    else 
+    }
+    else
     {
          std::cout << usage_lines(cli, "execute") << '\n';
     }
