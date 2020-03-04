@@ -129,7 +129,7 @@ void run_multisplit_all2all(
 
     // perform multisplit on each device
     auto part_hash = [=] DEVICEQUALIFIER (const data_t& x){
-        return (x % num_gpus) + 1;
+        return (x % num_gpus);
     };
 
     std::vector<std::vector<size_t>> table(num_gpus, std::vector<size_t>(num_gpus));
@@ -143,6 +143,13 @@ void run_multisplit_all2all(
         for (gpu_id_t trg = 0; trg < num_gpus; trg++)
             std::cout << table[src][trg] << (trg+1 == num_gpus ? "\n" : " ");
     std::cout << std::endl;
+
+    // reset srcs to zero
+    for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
+        cudaSetDevice(context.get_device_id(gpu));
+        cudaMemsetAsync(srcs[gpu], 0, sizeof(data_t)*lens[gpu],
+                        context.get_streams(gpu)[0]);
+    } CUERR
 
     // perform all to all communication
     std::vector<size_t> srcs_lens(num_gpus);
@@ -172,7 +179,7 @@ void run_multisplit_all2all(
     for (gpu_id_t gpu = 0; gpu < num_gpus; gpu++) {
         cudaSetDevice(context.get_device_id(gpu));
         validate<<<256, 1024, 0, context.get_streams(gpu)[0]>>>
-            (dsts[gpu], lengths[gpu], gpu+1, part_hash);
+            (dsts[gpu], lengths[gpu], gpu, part_hash);
     }
     CUERR
     TIMERSTOP(validate)
@@ -258,7 +265,7 @@ void run_multisplit_all2all_async(
 
     // perform multisplit on each device
     auto part_hash = [=] DEVICEQUALIFIER (const data_t& x){
-        return (x % num_gpus) + 1;
+        return (x % num_gpus);
     };
 
     std::vector<std::vector<size_t>> table(num_gpus, std::vector<size_t>(num_gpus));
@@ -272,6 +279,13 @@ void run_multisplit_all2all_async(
         for (gpu_id_t trg = 0; trg < num_gpus; trg++)
             std::cout << table[src][trg] << (trg+1 == num_gpus ? "\n" : " ");
     std::cout << std::endl;
+
+    // reset srcs to zero
+    for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
+        cudaSetDevice(context.get_device_id(gpu));
+        cudaMemsetAsync(srcs[gpu], 0, sizeof(data_t)*lens[gpu],
+                        context.get_streams(gpu)[0]);
+    } CUERR
 
     // perform all to all communication
     std::vector<size_t> srcs_lens(num_gpus);
@@ -312,7 +326,7 @@ void run_multisplit_all2all_async(
     for (gpu_id_t gpu = 0; gpu < num_gpus; gpu++) {
         cudaSetDevice(context.get_device_id(gpu));
         validate<<<256, 1024, 0, context.get_streams(gpu)[0]>>>
-            (dsts[gpu], lengths[gpu], gpu+1, part_hash);
+            (dsts[gpu], lengths[gpu], gpu, part_hash);
     }
     CUERR
     TIMERSTOP(validate)
@@ -397,7 +411,7 @@ void run_multisplit_scatter_gather(
 
     // perform multisplit on main device
     auto part_hash = [=] HOSTDEVICEQUALIFIER (const data_t& x){
-        return (x % num_gpus) + 1;
+        return (x % num_gpus);
     };
 
     std::vector<std::vector<size_t>> table(num_gpus, std::vector<size_t>(num_gpus));
@@ -405,6 +419,13 @@ void run_multisplit_scatter_gather(
     multisplit.execAsync(srcs, lens, dsts, lens, table, part_hash);
     multisplit.sync();
     TIMERSTOP(multisplit)
+
+    // reset srcs to zero
+    for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
+        cudaSetDevice(context.get_device_id(gpu));
+        cudaMemsetAsync(srcs[gpu], 0, sizeof(data_t)*lens[gpu],
+                        context.get_streams(gpu)[0]);
+    } CUERR
 
     std::cout << "\nPartition Table:" << std::endl;
     for (gpu_id_t src = 0; src < num_gpus; src++)
@@ -432,7 +453,7 @@ void run_multisplit_scatter_gather(
     for (gpu_id_t gpu = 0; gpu < num_gpus; gpu++) {
         cudaSetDevice(context.get_device_id(gpu));
         validate<<<256, 1024, 0, context.get_streams(gpu)[0]>>>
-            (dsts[gpu], table[main_gpu][gpu], gpu+1, part_hash);
+            (dsts[gpu], table[main_gpu][gpu], gpu, part_hash);
     }
     context.sync_hard();
     CUERR
@@ -476,7 +497,7 @@ void run_multisplit_scatter_gather(
     cudaSetDevice(context.get_device_id(main_gpu));
     for (gpu_id_t gpu = 0; gpu < num_gpus; gpu++) {
         validate<<<256, 1024, 0, context.get_streams(main_gpu)[0]>>>
-            (mems2[gpu], table[main_gpu][gpu], gpu+1, part_hash);
+            (mems2[gpu], table[main_gpu][gpu], gpu, part_hash);
     }
     context.sync_hard();
     CUERR
@@ -559,7 +580,7 @@ void run_multisplit_broadcast(
 
     // perform multisplit on main device
     auto part_hash = [=] HOSTDEVICEQUALIFIER (const data_t& x){
-        return (x % num_gpus) + 1;
+        return (x % num_gpus);
     };
 
     std::vector<std::vector<size_t>> table(num_gpus, std::vector<size_t>(num_gpus));
@@ -574,6 +595,12 @@ void run_multisplit_broadcast(
             std::cout << table[src][trg] << (trg+1 == num_gpus ? "\n" : " ");
     std::cout << std::endl;
 
+    // reset srcs to zero
+    for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
+        cudaSetDevice(context.get_device_id(gpu));
+        cudaMemsetAsync(srcs[gpu], 0, sizeof(data_t)*lens[gpu],
+                        context.get_streams(gpu)[0]);
+    } CUERR
 
     // perform broadcast
     std::vector<size_t> mems_lens(num_gpus);
@@ -604,7 +631,7 @@ void run_multisplit_broadcast(
         cudaSetDevice(context.get_device_id(gpu));
         for (gpu_id_t part = 0; part < num_gpus; part++)
             validate<<<256, 1024, 0, context.get_streams(gpu)[part]>>>
-                (dsts[gpu]+prefix[part], table[main_gpu][part], part+1, part_hash);
+                (dsts[gpu]+prefix[part], table[main_gpu][part], part, part_hash);
     }
     context.sync_hard();
     CUERR

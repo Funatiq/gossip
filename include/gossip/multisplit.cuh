@@ -126,7 +126,7 @@ public:
 
                 binary_split<<<256, 1024, 0, context->get_streams(gpu)[0]>>>
                    (srcs[gpu], dsts[gpu], srcs_lens[gpu],
-                    counters_device[gpu], functor, part+1);
+                    counters_device[gpu], functor, part);
                 cudaMemcpyAsync(&counters_host[gpu][part],
                                 &counters_device[gpu][0],
                                 sizeof(cnter_t), cudaMemcpyDeviceToHost,
@@ -145,13 +145,6 @@ public:
                                              counters_host[gpu][part] :
                                              counters_host[gpu][part] -
                                              counters_host[gpu][part-1];
-
-        // reset srcs to zero
-        for (gpu_id_t gpu = 0; gpu < get_num_devices(); ++gpu) {
-            cudaSetDevice(context->get_device_id(gpu));
-            cudaMemsetAsync(srcs[gpu], 0, sizeof(value_t)*srcs_lens[gpu],
-                            context->get_streams(gpu)[0]);
-        } CUERR
 
         return true;
     }
