@@ -24,10 +24,12 @@ else:
 
 main_gpu = args.main_gpu
 
+capacities = get_topology_matrix()
+bisection_width = 0
 
 # dgx1 volta: 6 nvlink per gpu
-capacities = get_topology_matrix("dgx1_topology.txt")
-bisection_width = 6
+# capacities = get_topology_matrix("dgx1_topology.txt")
+# bisection_width = 6
 
 # ps0001 pascal: 4 nvlink per gpu
 # capacities = get_topology_matrix("ps0001_topology.txt")
@@ -87,13 +89,18 @@ bisection_width = 6
 # bisection_width = 8
 
 num_gpus = capacities.shape[0]
+if bisection_width == 0:
+    bisection_width = np.sum(capacities[num_gpus//2:,:num_gpus//2])
 
 main_degree = int(np.sum(capacities[main_gpu, :]) - capacities[main_gpu,main_gpu])
-print("main:", main_gpu, "degree:", main_degree)
+print("main:", main_gpu, "degree:", main_degree, "bisection width:", bisection_width)
 
 
+print("topology:")
+print(capacities)
+max_capacity = np.max(capacities * (1-np.eye(num_gpus)))
+print("max links:", max_capacity)
 
-max_capacity = np.max(capacities * (capacities < num_gpus))
 if max_capacity > 2:
     print("topologies with more than 2 nvlinks at the same edge are not supported.")
     raise SystemExit()
@@ -102,9 +109,6 @@ lengths = np.where(capacities <= max_capacity, max_capacity / capacities, 1)
 # print("lengths:")
 # print(lengths)
 
-print("topology:")
-print(capacities)
-print("max links:", max_capacity)
 
 if modes[mode] == 0: # scatter
     num_commodities = 1
@@ -163,9 +167,9 @@ for steps in range(min_steps, max_steps+1):
     # Flow conservation on transit nodes: The amount of a flow entering is the same that exits the node.
     in_out_bounds = np.zeros_like(conservation_constraints)
     # Flow conservation at the source: A flow must exit its source node completely.
-    in_out_bounds[0] = commodities_in
+    in_out_bounds[0] = commodities_in.reshape((num_gpus,num_commodities))
     # Flow conservation at the destination: A flow must enter its sink node completely.
-    in_out_bounds[-1] = -1*commodities_out
+    in_out_bounds[-1] = -1*commodities_out.reshape((num_gpus,num_commodities))
 
     for i in range(conservation_constraints.size):
         conservation_constraints.flat[i] = solver.Constraint(in_out_bounds.flat[i], in_out_bounds.flat[i])

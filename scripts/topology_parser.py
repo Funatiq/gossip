@@ -35,8 +35,8 @@ def get_topology_matrix(filename = ""):
 
     return topology_matrix
 
-topology_matrix = get_topology_matrix()
-print(topology_matrix)
+# topology_matrix = get_topology_matrix()
+# print(topology_matrix)
 
-topology_matrix = get_topology_matrix("dgx1_topology.txt")
-print(topology_matrix)
+# topology_matrix = get_topology_matrix("dgx1_topology.txt")
+# print(topology_matrix)
