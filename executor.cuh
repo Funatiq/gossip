@@ -149,7 +149,9 @@ void run_multisplit_all2all(
         cudaSetDevice(context.get_device_id(gpu));
         cudaMemsetAsync(srcs[gpu], 0, sizeof(data_t)*lens[gpu],
                         context.get_streams(gpu)[0]);
-    } CUERR
+    }
+    context.sync_all_streams();
+    CUERR
 
     // perform all to all communication
     std::vector<size_t> srcs_lens(num_gpus);
@@ -285,7 +287,9 @@ void run_multisplit_all2all_async(
         cudaSetDevice(context.get_device_id(gpu));
         cudaMemsetAsync(srcs[gpu], 0, sizeof(data_t)*lens[gpu],
                         context.get_streams(gpu)[0]);
-    } CUERR
+    }
+    context.sync_all_streams();
+    CUERR
 
     // perform all to all communication
     std::vector<size_t> srcs_lens(num_gpus);
