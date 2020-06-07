@@ -90,7 +90,7 @@ bisection_width = 0
 
 num_gpus = capacities.shape[0]
 if bisection_width == 0:
-    bisection_width = np.sum(capacities[num_gpus//2:,:num_gpus//2])
+    bisection_width = np.sum(capacities[num_gpus//2:,:num_gpus//2]).astype(int)
 
 main_degree = int(np.sum(capacities[main_gpu, :]) - capacities[main_gpu,main_gpu])
 print("main:", main_gpu, "degree:", main_degree, "bisection width:", bisection_width)
