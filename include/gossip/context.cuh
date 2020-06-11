@@ -177,17 +177,15 @@ public:
 
     // sync all streams associated with the specified GPU
     void sync_gpu_streams (const gpu_id_t gpu) const noexcept {
-        cudaSetDevice(get_device_id(gpu)); CUERR
+        cudaSetDevice(get_device_id(gpu));
         for (gpu_id_t part = 0; part < num_gpus; ++part)
             cudaStreamSynchronize(get_streams(gpu)[part]);
-        CUERR
     }
 
     // sync all streams of the context
     void sync_all_streams () const noexcept {
         for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu)
             sync_gpu_streams(gpu);
-        CUERR
     }
 
     // sync all GPUs
@@ -195,7 +193,7 @@ public:
         for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
             cudaSetDevice(get_device_id(gpu));
             cudaDeviceSynchronize();
-        } CUERR
+        }
     }
 
     // check if both streams and device identifiers are created

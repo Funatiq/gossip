@@ -443,8 +443,10 @@ void run_multisplit_scatter_gather(
     std::vector<size_t> bufs_lens(bufs_lens_calc_scatter);
     TIMERSTART(malloc_buffers)
     for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
-        cudaSetDevice(context.get_device_id(gpu));
-        cudaMalloc(&bufs[gpu], sizeof(data_t)*bufs_lens[gpu]);
+        if(bufs_lens[gpu] > 0) {
+            cudaSetDevice(context.get_device_id(gpu));
+            cudaMalloc(&bufs[gpu], sizeof(data_t)*bufs_lens[gpu]);
+        }
     } CUERR
     context.sync_hard();
     TIMERSTOP(malloc_buffers)
@@ -462,8 +464,10 @@ void run_multisplit_scatter_gather(
         cudaSetDevice(context.get_device_id(gpu));
         cudaMemsetAsync(dsts[gpu], 0, sizeof(data_t)*mems_lens[gpu],
                         context.get_streams(gpu)[0]);
-        cudaMemsetAsync(bufs[gpu], 0, sizeof(data_t)*bufs_lens[gpu],
-                        context.get_streams(gpu)[0]);
+        if(bufs_lens[gpu] > 0) {
+            cudaMemsetAsync(bufs[gpu], 0, sizeof(data_t)*bufs_lens[gpu],
+                            context.get_streams(gpu)[0]);
+        }
     }
     context.sync_all_streams();
     CUERR
@@ -476,6 +480,7 @@ void run_multisplit_scatter_gather(
                       bufs, bufs_lens,
                       table[main_gpu]);
     scatter.sync();
+    CUERR
     TIMERSTOP(scatter)
 
     TIMERSTART(validate_scatter)
@@ -521,8 +526,10 @@ void run_multisplit_scatter_gather(
         cudaSetDevice(context.get_device_id(gpu));
         cudaMemsetAsync(dsts[gpu], ~0, sizeof(data_t)*mems_lens[gpu],
                         context.get_streams(gpu)[0]);
-        cudaMemsetAsync(bufs[gpu], ~0, sizeof(data_t)*bufs_lens[gpu],
-                        context.get_streams(gpu)[0]);
+        if(bufs_lens[gpu] > 0) {
+            cudaMemsetAsync(bufs[gpu], ~0, sizeof(data_t)*bufs_lens[gpu],
+                            context.get_streams(gpu)[0]);
+        }
     }
     context.sync_all_streams();
     CUERR
@@ -535,6 +542,7 @@ void run_multisplit_scatter_gather(
                      bufs, bufs_lens,
                      table[main_gpu]);
     gather.sync();
+    CUERR
     TIMERSTOP(gather)
 
     TIMERSTART(validate_gather)
@@ -557,7 +565,9 @@ void run_multisplit_scatter_gather(
         cudaSetDevice(context.get_device_id(gpu)); CUERR
         cudaFree(ying[gpu]);        CUERR
         cudaFree(yang[gpu]);        CUERR
-        cudaFree(bufs[gpu]);        CUERR
+        if(bufs_lens[gpu] > 0) {
+            cudaFree(bufs[gpu]);    CUERR
+        }
     } CUERR
 }
 
