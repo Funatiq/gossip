@@ -103,6 +103,31 @@ private:
 
 public:
     /**
+     * Calculate buffer lengths needed to execute scatter with given send_counts.
+     * The lenghts of the parameters have to match the context.
+     * @param send_counts send_counts[k] elements are sent to device_ids[k].
+     * @param verbose if true, show details for each transfer.
+     * @return bufs_len bufs_len[k] is required length of bufs[k] array.
+     */
+    template <
+        typename table_t>
+    const std::vector<size_t> calcBufferLengths (
+        const std::vector<table_t>& send_counts,
+        bool verbose = false
+    ) const {
+        if (!check(plan_valid, "Invalid plan. Abort."))
+            return {};
+
+        if (!check(send_counts.size() == get_num_devices(),
+                    "table size does not match number of gpus."))
+            return {};
+
+        transfer_handler<table_t> transfers = makeTransferHandler(send_counts, verbose);
+
+        return transfers.aux_offsets;
+    }
+
+    /**
      * Execute gather asynchronously using the given context.
      * The lenghts of the parameters have to match the context.
      * @param srcs pointers to source arrays. srcs[k] array should reside on device_ids[k].
@@ -120,9 +145,11 @@ public:
     bool execAsync (
         const std::vector<value_t *>& srcs,
         const std::vector<index_t  >& srcs_lens,
-        const std::vector<table_t  >& send_counts,
         value_t * dst,
         const index_t dst_len,
+        const std::vector<value_t *>& bufs,
+        const std::vector<index_t  >& bufs_lens,
+        const std::vector<table_t  >& send_counts,
         bool verbose = false
     ) const {
         if (!check(plan_valid, "Invalid plan. Abort."))
@@ -134,27 +161,28 @@ public:
         if (!check(srcs_lens.size() == get_num_devices(),
                     "srcs_lens size does not match number of gpus."))
             return false;
+        if (!check(bufs.size() == get_num_devices(),
+                    "bufs size does not match number of gpus."))
+            return false;
+        if (!check(bufs_lens.size() == get_num_devices(),
+                    "bufs_lens size does not match number of gpus."))
+            return false;
         if (!check(send_counts.size() == get_num_devices(),
                     "table size does not match number of gpus."))
             return false;
 
         transfer_handler<table_t> transfers = makeTransferHandler(send_counts, verbose);
 
+        // check source array sizes
+        if (!check_size(send_counts, srcs_lens)) return false;
+        // check buffer array sizes
+        if(!check_size(transfers.aux_offsets, bufs_lens)) return false;
         // check destination array size
         if(!check_size(transfers.trg_offsets.back()[transfer_plan.main_gpu()], dst_len))
             return false;
+
         std::vector<value_t *> dsts(get_num_devices());
         dsts[transfer_plan.main_gpu()] = dst;
-
-        // buffer behind local sources
-        for (gpu_id_t i = 0; i < get_num_devices(); ++i) {
-            if(!check_size(transfers.src_offsets[i][transfer_plan.main_gpu()] + transfers.aux_offsets[i],
-                           srcs_lens[i]))
-                return false;
-        }
-        std::vector<value_t *> bufs(srcs);
-        for (gpu_id_t i = 0; i < get_num_devices(); ++i)
-            bufs[i] += send_counts[i];
 
         for (size_t p = 0; p < transfers.num_phases; ++p)
             transfers.execute_phase(p, srcs, dsts, bufs);

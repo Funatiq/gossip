@@ -104,7 +104,7 @@ public:
     /**
      * Calculate buffer lengths needed to execute all2all with given send_counts.
      * The lenghts of the parameters have to match the context.
-     * @param send_counts send_counts[k][l] elements are sent to from device_ids[k] to device_ids[l].
+     * @param send_counts send_counts[k][l] elements are sent from device_ids[k] to device_ids[l].
      * @param verbose if true, show details for each transfer.
      * @return bufs_len bufs_len[k] is required length of bufs[k] array.
      */
@@ -137,7 +137,7 @@ public:
      * @param dsts_len dsts_len[k] is length of dsts[k] array.
      * @param bufs pointers to buffer arrays. bufs[k] array should reside on device_ids[k].
      * @param bufs_len bufs_len[k] is length of bufs[k] array.
-     * @param send_counts send_counts[k][l] elements are sent to from device_ids[k] to device_ids[l].
+     * @param send_counts send_counts[k][l] elements are sent from device_ids[k] to device_ids[l].
      * @param verbose if true, show details for each transfer.
      * @return true if executed successfully.
      */
@@ -175,7 +175,8 @@ public:
             return false;
         if (!check(bufs_lens.size() == get_num_devices(),
                     "bufs_lens size does not match number of gpus."))
-            return false;        if (!check(send_counts.size() == get_num_devices(),
+            return false;
+        if (!check(send_counts.size() == get_num_devices(),
                     "table size does not match number of gpus."))
             return false;
         for (const auto& counts : send_counts) {

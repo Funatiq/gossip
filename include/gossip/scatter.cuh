@@ -103,13 +103,40 @@ private:
 
 public:
     /**
+     * Calculate buffer lengths needed to execute scatter with given send_counts.
+     * The lenghts of the parameters have to match the context.
+     * @param send_counts send_counts[k] elements are sent to device_ids[k].
+     * @param verbose if true, show details for each transfer.
+     * @return bufs_len bufs_len[k] is required length of bufs[k] array.
+     */
+    template <
+        typename table_t>
+    const std::vector<size_t> calcBufferLengths (
+        const std::vector<table_t>& send_counts,
+        bool verbose = false
+    ) const {
+        if (!check(plan_valid, "Invalid plan. Abort."))
+            return {};
+
+        if (!check(send_counts.size() == get_num_devices(),
+                    "table size does not match number of gpus."))
+            return {};
+
+        transfer_handler<table_t> transfers = makeTransferHandler(send_counts, verbose);
+
+        return transfers.aux_offsets;
+    }
+
+    /**
      * Execute scatter asynchronously using the given context.
      * The lenghts of the parameters have to match the context.
      * @param src pointer to source array. should reside on device_ids[main_gpu].
      * @param src_len src_len is length of src array.
-     * @param send_counts send_counts[k] elements are sent to device_ids[k]
      * @param dsts pointers to destination arrays. dsts[k] array should reside on device_ids[k].
      * @param dsts_len dsts_len[k] is length of dsts[k] array.
+     * @param bufs pointers to buffer arrays. bufs[k] array should reside on device_ids[k].
+     * @param bufs_len bufs_len[k] is length of bufs[k] array.
+     * @param send_counts send_counts[k] elements are sent to device_ids[k]
      * @param verbose if true, show details for each transfer.
      * @return true if executed successfully.
      */
@@ -120,9 +147,11 @@ public:
     bool execAsync (
         value_t * src,
         const index_t src_len,
-        const std::vector<table_t  >& send_counts,
         const std::vector<value_t *>& dsts,
         const std::vector<index_t  >& dsts_lens,
+        const std::vector<value_t *>& bufs,
+        const std::vector<index_t  >& bufs_lens,
+        const std::vector<table_t  >& send_counts,
         bool verbose = false
     ) const {
         if (!check(plan_valid, "Invalid plan. Abort."))
@@ -134,6 +163,12 @@ public:
         if (!check(dsts_lens.size() == get_num_devices(),
                     "dsts_lens size does not match number of gpus."))
             return false;
+        if (!check(bufs.size() == get_num_devices(),
+                    "bufs size does not match number of gpus."))
+            return false;
+        if (!check(bufs_lens.size() == get_num_devices(),
+                    "bufs_lens size does not match number of gpus."))
+            return false;
         if (!check(send_counts.size() == get_num_devices(),
                     "table size does not match number of gpus."))
             return false;
@@ -143,18 +178,13 @@ public:
         // check source array size
         if (!check_size(transfers.src_offsets[transfer_plan.main_gpu()].back(), src_len))
             return false;
+        // check buffer array sizes
+        if(!check_size(transfers.aux_offsets, bufs_lens)) return false;
+        // check destination array sizes
+        if(!check_size(send_counts, dsts_lens)) return false;
+
         std::vector<value_t *> srcs(get_num_devices());
         srcs[transfer_plan.main_gpu()] = src;
-
-        // buffer behind local destinations
-        for (gpu_id_t i = 0; i < get_num_devices(); ++i) {
-            if(!check_size(transfers.trg_offsets[transfer_plan.main_gpu()][i] + transfers.aux_offsets[i],
-                           dsts_lens[i]))
-                return false;
-        }
-        std::vector<value_t *> bufs(dsts);
-        for (gpu_id_t i = 0; i < get_num_devices(); ++i)
-            bufs[i] += send_counts[i];
 
         for (size_t p = 0; p < transfers.num_phases; ++p)
             transfers.execute_phase(p, srcs, dsts, bufs);
