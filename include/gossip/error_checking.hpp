@@ -4,8 +4,11 @@
 #include <vector>
 #include <stdexcept>
 
+#include "config.h"
+
 namespace gossip {
 
+    inline
     bool check(bool statement, const char* message) {
         if(!statement) {
     #ifdef THROW_EXCEPTIONS
