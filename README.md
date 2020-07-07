@@ -4,9 +4,11 @@ Gossip supports scatter, gather and all-to-all communication. To execute one of 
 
 Gossip was presented at [ICPP '19](https://dl.acm.org/citation.cfm?id=3337889).
 
-## Example
+## Examples
 
 The example [execute.cu](execute.cu) executes gossip's communication primitives on uniformly distributed random numbers. The data is first split into a number of chunks corresponding to the number of GPUs (multisplit). The chunks sizes are displayed as a partiton table (row=source GPU, column=target GPU). Then the data is transferred between the GPUs. At the end it validates if all data reached the correct destinations.
+
+The example [simulate.cu](simulate.cu) allows to run the multi-GPU example above simulated on a single GPU.
 
 ### Build example
 
@@ -27,6 +29,8 @@ Requirements:
 
 ./execute scatter_gather <scatter plan> <gather plan> [--size <size>] [--memory-factor <factor>]
 ```
+
+Use `./simulate` instead of `./execute` if you want to simulate the example on a single GPU.
 
 Mandatory:
 

@@ -1,5 +1,6 @@
 NVCC=nvcc
-NVCCGENCODE = -gencode arch=compute_60,code=sm_60 \
+NVCCGENCODE = \
+              -gencode arch=compute_60,code=sm_60 \
               -gencode arch=compute_70,code=sm_70
 
 NVCCFLAGS = $(NVCCGENCODE) -O3 -std=c++11 --expt-extended-lambda -Xcompiler="-fopenmp" -Wreorder -lineinfo
@@ -26,7 +27,7 @@ BUILD_DIR = build
 
 .PHONY: all clean
 
-all: execute
+all: execute simulate
 
 execute: $(BUILD_DIR) execute.cu executor.cuh $(HEADERS) include/plan_parser.hpp $(BUILD_DIR)/plan_parser.o $(BUILD_DIR)/execute.o
 	$(NVCC) $(NVCCFLAGS) $(BUILD_DIR)/plan_parser.o $(BUILD_DIR)/execute.o -o execute
@@ -36,6 +37,12 @@ $(BUILD_DIR)/execute.o: execute.cu executor.cuh $(HEADERS) include/plan_parser.h
 
 $(BUILD_DIR)/plan_parser.o: include/plan_parser.cpp include/plan_parser.hpp
 	$(NVCC) $(NVCCFLAGS) -c include/plan_parser.cpp -o $(BUILD_DIR)/plan_parser.o
+
+simulate: $(BUILD_DIR) simulate.cu executor.cuh $(HEADERS) include/plan_parser.hpp $(BUILD_DIR)/plan_parser.o $(BUILD_DIR)/simulate.o
+	$(NVCC) $(NVCCFLAGS) $(BUILD_DIR)/plan_parser.o $(BUILD_DIR)/simulate.o -o simulate
+
+$(BUILD_DIR)/simulate.o: simulate.cu executor.cuh $(HEADERS) include/plan_parser.hpp
+	$(NVCC) $(NVCCFLAGS) -c simulate.cu -o $(BUILD_DIR)/simulate.o
 
 clean:
 	rm -rf $(BUILD_DIR)
