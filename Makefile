@@ -2,7 +2,7 @@ NVCC=nvcc
 NVCCGENCODE = -gencode arch=compute_60,code=sm_60 \
               -gencode arch=compute_70,code=sm_70
 
-NVCCFLAGS = $(NVCCGENCODE) -O3 -std=c++14 --expt-extended-lambda -Xcompiler="-fopenmp" -Wreorder -lineinfo
+NVCCFLAGS = $(NVCCGENCODE) -O3 -std=c++11 --expt-extended-lambda -Xcompiler="-fopenmp" -Wreorder -lineinfo
 
 HEADERS = include/gossip.cuh \
 		  include/gossip/all_to_all_async.cuh \
