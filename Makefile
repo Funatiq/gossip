@@ -25,28 +25,33 @@ HEADERS = include/gossip.cuh \
 
 BUILD_DIR = build
 
+
 .PHONY: all clean
 
 all: execute simulate
 
-execute: $(BUILD_DIR) execute.cu executor.cuh $(HEADERS) include/plan_parser.hpp $(BUILD_DIR)/plan_parser.o $(BUILD_DIR)/execute.o
+
+execute: $(BUILD_DIR) $(BUILD_DIR)/plan_parser.o $(BUILD_DIR)/execute.o
 	$(NVCC) $(NVCCFLAGS) $(BUILD_DIR)/plan_parser.o $(BUILD_DIR)/execute.o -o execute
 
 $(BUILD_DIR)/execute.o: execute.cu executor.cuh $(HEADERS) include/plan_parser.hpp
 	$(NVCC) $(NVCCFLAGS) -c execute.cu -o $(BUILD_DIR)/execute.o
 
-$(BUILD_DIR)/plan_parser.o: include/plan_parser.cpp include/plan_parser.hpp
-	$(NVCC) $(NVCCFLAGS) -c include/plan_parser.cpp -o $(BUILD_DIR)/plan_parser.o
 
-simulate: $(BUILD_DIR) simulate.cu executor.cuh $(HEADERS) include/plan_parser.hpp $(BUILD_DIR)/plan_parser.o $(BUILD_DIR)/simulate.o
+simulate: $(BUILD_DIR) $(BUILD_DIR)/plan_parser.o $(BUILD_DIR)/simulate.o
 	$(NVCC) $(NVCCFLAGS) $(BUILD_DIR)/plan_parser.o $(BUILD_DIR)/simulate.o -o simulate
 
 $(BUILD_DIR)/simulate.o: simulate.cu executor.cuh $(HEADERS) include/plan_parser.hpp
 	$(NVCC) $(NVCCFLAGS) -c simulate.cu -o $(BUILD_DIR)/simulate.o
 
-clean:
-	rm -rf $(BUILD_DIR)
-	rm -rf execute
 
 $(BUILD_DIR):
 	mkdir $(BUILD_DIR)
+
+$(BUILD_DIR)/plan_parser.o: include/plan_parser.cpp include/plan_parser.hpp
+	$(NVCC) $(NVCCFLAGS) -c include/plan_parser.cpp -o $(BUILD_DIR)/plan_parser.o
+
+
+clean:
+	rm -rf $(BUILD_DIR)
+	rm -rf execute
