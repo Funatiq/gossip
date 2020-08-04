@@ -1,6 +1,6 @@
 # pragma once
 
-#include "cudahelpers/cuda_helpers.cuh"
+#include "hpc_helpers/include/cuda_helpers.cuh"
 
 #include "gossip/config.h"
 #include "gossip/context.cuh"

@@ -3,9 +3,11 @@
 #include <iostream>
 #include <cstdint>
 #include "include/gossip.cuh"
-#include "include/cudahelpers/cuda_helpers.cuh"
+#include "include/hpc_helpers/include/cuda_helpers.cuh"
+#include "include/hpc_helpers/include/timers.cuh"
 
 using gpu_id_t = gossip::gpu_id_t;
+using namespace helpers;
 
 #define BIG_CONSTANT(x) (x##LLU)
 __host__ __device__ uint64_t fmix64(uint64_t k) {
@@ -135,27 +137,30 @@ void run_multisplit_all2all(
     const std::vector<size_t> lens(num_gpus, batch_size);
     const std::vector<size_t> mems_lens(num_gpus, batch_size_secure);
 
-    TIMERSTART(malloc_devices)
-    for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
-        cudaSetDevice(context.get_device_id(gpu)); CUERR
-        cudaMalloc(&srcs[gpu], sizeof(data_t)*mems_lens[gpu]); CUERR
-        cudaMalloc(&dsts[gpu], sizeof(data_t)*mems_lens[gpu]); CUERR
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "malloc_devices", 0, std::cout);
+        for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
+            cudaSetDevice(context.get_device_id(gpu)); CUERR
+            cudaMalloc(&srcs[gpu], sizeof(data_t)*mems_lens[gpu]); CUERR
+            cudaMalloc(&dsts[gpu], sizeof(data_t)*mems_lens[gpu]); CUERR
+        }
     }
-    TIMERSTOP(malloc_devices)
 
-    TIMERSTART(zero_gpu_buffers)
-    memset_all(context, srcs, mems_lens, data_t(0));
-    memset_all(context, dsts, mems_lens, data_t(0));
-    context.sync_all_streams();
-    CUERR
-    TIMERSTOP(zero_gpu_buffers)
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "zero_gpu_buffers", 0, std::cout);
+        memset_all(context, srcs, mems_lens, data_t(0));
+        memset_all(context, dsts, mems_lens, data_t(0));
+        context.sync_all_streams();
+        CUERR
+    }
 
     // generate batch of data on each device
-    TIMERSTART(init_data)
-    generate_all(context, srcs, lens);
-    context.sync_all_streams();
-    CUERR
-    TIMERSTOP(init_data)
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "init_data", 0, std::cout);
+        generate_all(context, srcs, lens);
+        context.sync_all_streams();
+        CUERR
+    }
 
     // perform multisplit on each device
     auto part_hash = [=] DEVICEQUALIFIER (const data_t& x){
@@ -163,10 +168,11 @@ void run_multisplit_all2all(
     };
 
     std::vector<std::vector<size_t>> table(num_gpus, std::vector<size_t>(num_gpus));
-    TIMERSTART(multisplit)
-    multisplit.execAsync(srcs, lens, dsts, lens, table, part_hash);
-    multisplit.sync();
-    TIMERSTOP(multisplit)
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "multisplit", 0, std::cout);
+        multisplit.execAsync(srcs, lens, dsts, lens, table, part_hash);
+        multisplit.sync();
+    }
 
     print_partition_table(table);
 
@@ -179,26 +185,28 @@ void run_multisplit_all2all(
 
     // all2all.show_plan();
 
-    TIMERSTART(all2all)
-    all2all.execAsync(srcs, mems_lens, dsts, mems_lens, table);
-    all2all.sync();
-    TIMERSTOP(all2all)
-
-    TIMERSTART(validate)
-    std::vector<size_t> lengths(num_gpus);
-    for (gpu_id_t trg = 0; trg < num_gpus; trg++) {
-        lengths[trg] = 0;
-        for (gpu_id_t src = 0; src < num_gpus; src++)
-            lengths[trg] += table[src][trg];
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "all2all", 0, std::cout);
+        all2all.execAsync(srcs, mems_lens, dsts, mems_lens, table);
+        all2all.sync();
     }
 
-    for (gpu_id_t gpu = 0; gpu < num_gpus; gpu++) {
-        cudaSetDevice(context.get_device_id(gpu));
-        validate<<<256, 1024, 0, context.get_streams(gpu)[0]>>>
-            (dsts[gpu], lengths[gpu], gpu, part_hash);
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "validate", 0, std::cout);
+        std::vector<size_t> lengths(num_gpus);
+        for (gpu_id_t trg = 0; trg < num_gpus; trg++) {
+            lengths[trg] = 0;
+            for (gpu_id_t src = 0; src < num_gpus; src++)
+                lengths[trg] += table[src][trg];
+        }
+
+        for (gpu_id_t gpu = 0; gpu < num_gpus; gpu++) {
+            cudaSetDevice(context.get_device_id(gpu));
+            validate<<<256, 1024, 0, context.get_streams(gpu)[0]>>>
+                (dsts[gpu], lengths[gpu], gpu, part_hash);
+        }
+        CUERR
     }
-    CUERR
-    TIMERSTOP(validate)
 
     // cleanup ----------------------------------------------------------------
     context.sync_hard();
@@ -231,27 +239,30 @@ void run_multisplit_all2all_async(
     const std::vector<size_t> lens(num_gpus, batch_size);
     const std::vector<size_t> mems_lens(num_gpus, batch_size_secure);
 
-    TIMERSTART(malloc_devices)
-    for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
-        cudaSetDevice(context.get_device_id(gpu)); CUERR
-        cudaMalloc(&srcs[gpu], sizeof(data_t)*mems_lens[gpu]); CUERR
-        cudaMalloc(&dsts[gpu], sizeof(data_t)*mems_lens[gpu]); CUERR
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "malloc_devices", 0, std::cout);
+        for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
+            cudaSetDevice(context.get_device_id(gpu)); CUERR
+            cudaMalloc(&srcs[gpu], sizeof(data_t)*mems_lens[gpu]); CUERR
+            cudaMalloc(&dsts[gpu], sizeof(data_t)*mems_lens[gpu]); CUERR
+        }
     }
-    TIMERSTOP(malloc_devices)
 
-    TIMERSTART(zero_gpu_buffers)
-    memset_all(context, srcs, mems_lens, data_t(0));
-    memset_all(context, dsts, mems_lens, data_t(0));
-    context.sync_all_streams();
-    CUERR
-    TIMERSTOP(zero_gpu_buffers)
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "zero_gpu_buffers", 0, std::cout);
+        memset_all(context, srcs, mems_lens, data_t(0));
+        memset_all(context, dsts, mems_lens, data_t(0));
+        context.sync_all_streams();
+        CUERR
+    }
 
     // generate batch of data on each device
-    TIMERSTART(init_data)
-    generate_all(context, srcs, lens);
-    context.sync_all_streams();
-    CUERR
-    TIMERSTOP(init_data)
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "init_data", 0, std::cout);
+        generate_all(context, srcs, lens);
+        context.sync_all_streams();
+        CUERR
+    }
 
     // perform multisplit on each device
     auto part_hash = [=] DEVICEQUALIFIER (const data_t& x){
@@ -259,10 +270,11 @@ void run_multisplit_all2all_async(
     };
 
     std::vector<std::vector<size_t>> table(num_gpus, std::vector<size_t>(num_gpus));
-    TIMERSTART(multisplit)
-    multisplit.execAsync(srcs, lens, dsts, lens, table, part_hash);
-    multisplit.sync();
-    TIMERSTOP(multisplit)
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "multisplit", 0, std::cout);
+        multisplit.execAsync(srcs, lens, dsts, lens, table, part_hash);
+        multisplit.sync();
+    }
 
     print_partition_table(table);
 
@@ -273,42 +285,46 @@ void run_multisplit_all2all_async(
     print_buffer_sizes(bufs_lens);
 
     std::vector<data_t *> bufs(num_gpus);
-    TIMERSTART(malloc_buffers)
-    for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
-        cudaSetDevice(context.get_device_id(gpu)); CUERR
-        cudaMalloc(&bufs[gpu], sizeof(data_t)*bufs_lens[gpu]); CUERR
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "malloc_buffers", 0, std::cout);
+        for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
+            cudaSetDevice(context.get_device_id(gpu)); CUERR
+            cudaMalloc(&bufs[gpu], sizeof(data_t)*bufs_lens[gpu]); CUERR
+        }
     }
-    TIMERSTOP(malloc_buffers)
 
     // reset dsts and buffer to zero
-    TIMERSTART(reset_buffers)
-    memset_all(context, dsts, mems_lens, data_t(0));
-    memset_all(context, bufs, bufs_lens, data_t(0));
-    context.sync_all_streams();
-    CUERR
-    TIMERSTOP(reset_buffers)
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "reset_buffers", 0, std::cout);
+        memset_all(context, dsts, mems_lens, data_t(0));
+        memset_all(context, bufs, bufs_lens, data_t(0));
+        context.sync_all_streams();
+        CUERR
+    }
 
     // all2all.show_plan();
 
-    TIMERSTART(all2all_async)
-    all2all.execAsync(srcs, mems_lens, dsts, mems_lens, bufs, bufs_lens, table);
-    all2all.sync();
-    TIMERSTOP(all2all_async)
-
-    TIMERSTART(validate)
-    std::vector<size_t> lengths(num_gpus, 0);
-    for (gpu_id_t trg = 0; trg < num_gpus; trg++) {
-        for (gpu_id_t src = 0; src < num_gpus; src++)
-            lengths[trg] += table[src][trg];
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "all2all_async", 0, std::cout);
+        all2all.execAsync(srcs, mems_lens, dsts, mems_lens, bufs, bufs_lens, table);
+        all2all.sync();
     }
 
-    for (gpu_id_t gpu = 0; gpu < num_gpus; gpu++) {
-        cudaSetDevice(context.get_device_id(gpu));
-        validate<<<256, 1024, 0, context.get_streams(gpu)[0]>>>
-            (dsts[gpu], lengths[gpu], gpu, part_hash);
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "validate", 0, std::cout);
+        std::vector<size_t> lengths(num_gpus, 0);
+        for (gpu_id_t trg = 0; trg < num_gpus; trg++) {
+            for (gpu_id_t src = 0; src < num_gpus; src++)
+                lengths[trg] += table[src][trg];
+        }
+
+        for (gpu_id_t gpu = 0; gpu < num_gpus; gpu++) {
+            cudaSetDevice(context.get_device_id(gpu));
+            validate<<<256, 1024, 0, context.get_streams(gpu)[0]>>>
+                (dsts[gpu], lengths[gpu], gpu, part_hash);
+        }
+        CUERR
     }
-    CUERR
-    TIMERSTOP(validate)
 
     // cleanup ----------------------------------------------------------------
     context.sync_hard();
@@ -346,28 +362,31 @@ void run_multisplit_scatter_gather(
     lens[main_gpu] = batch_size;
     const std::vector<size_t> mems_lens(num_gpus, batch_size_secure);
 
-    TIMERSTART(malloc_devices)
-    for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
-        cudaSetDevice(context.get_device_id(gpu)); CUERR
-        cudaMalloc(&srcs[gpu], sizeof(data_t)*mems_lens[gpu]); CUERR
-        cudaMalloc(&dsts[gpu], sizeof(data_t)*mems_lens[gpu]); CUERR
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "malloc_devices", 0, std::cout);
+        for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
+            cudaSetDevice(context.get_device_id(gpu)); CUERR
+            cudaMalloc(&srcs[gpu], sizeof(data_t)*mems_lens[gpu]); CUERR
+            cudaMalloc(&dsts[gpu], sizeof(data_t)*mems_lens[gpu]); CUERR
+        }
     }
-    TIMERSTOP(malloc_devices)
 
-    TIMERSTART(zero_gpu_buffers)
-    memset_all(context, srcs, mems_lens, data_t(0));
-    memset_all(context, dsts, mems_lens, data_t(0));
-    context.sync_all_streams();
-    CUERR
-    TIMERSTOP(zero_gpu_buffers)
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "zero_gpu_buffers", 0, std::cout);
+        memset_all(context, srcs, mems_lens, data_t(0));
+        memset_all(context, dsts, mems_lens, data_t(0));
+        context.sync_all_streams();
+        CUERR
+    }
 
-    TIMERSTART(init_data)
-    cudaSetDevice(context.get_device_id(main_gpu));
-    generate_data<<<256, 1024, 0, context.get_streams(main_gpu)[0]>>>
-        (srcs[main_gpu], lens[main_gpu], size_t(0));
-    context.sync_all_streams();
-    CUERR
-    TIMERSTOP(init_data)
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "init_data", 0, std::cout);
+        cudaSetDevice(context.get_device_id(main_gpu));
+        generate_data<<<256, 1024, 0, context.get_streams(main_gpu)[0]>>>
+            (srcs[main_gpu], lens[main_gpu], size_t(0));
+        context.sync_all_streams();
+        CUERR
+    }
 
     // perform multisplit on main device
     auto part_hash = [=] HOSTDEVICEQUALIFIER (const data_t& x){
@@ -375,10 +394,11 @@ void run_multisplit_scatter_gather(
     };
 
     std::vector<std::vector<size_t>> table(num_gpus, std::vector<size_t>(num_gpus));
-    TIMERSTART(multisplit)
-    multisplit.execAsync(srcs, lens, dsts, lens, table, part_hash);
-    multisplit.sync();
-    TIMERSTOP(multisplit)
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "multisplit", 0, std::cout);
+        multisplit.execAsync(srcs, lens, dsts, lens, table, part_hash);
+        multisplit.sync();
+    }
 
     print_partition_table(table);
 
@@ -390,41 +410,45 @@ void run_multisplit_scatter_gather(
 
     std::vector<data_t *> bufs(num_gpus);
     std::vector<size_t> bufs_lens(bufs_lens_scatter);
-    TIMERSTART(malloc_buffers)
-    for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
-        cudaSetDevice(context.get_device_id(gpu)); CUERR
-        cudaMalloc(&bufs[gpu], sizeof(data_t)*bufs_lens[gpu]); CUERR
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "malloc_buffers", 0, std::cout);
+        for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
+            cudaSetDevice(context.get_device_id(gpu)); CUERR
+            cudaMalloc(&bufs[gpu], sizeof(data_t)*bufs_lens[gpu]); CUERR
+        }
     }
-    TIMERSTOP(malloc_buffers)
 
     // reset dsts and buffer to zero
-    TIMERSTART(reset_buffers)
-    memset_all(context, dsts, mems_lens, data_t(0));
-    memset_all(context, bufs, bufs_lens, data_t(0));
-    context.sync_all_streams();
-    CUERR
-    TIMERSTOP(reset_buffers)
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "reset_buffers", 0, std::cout);
+        memset_all(context, dsts, mems_lens, data_t(0));
+        memset_all(context, bufs, bufs_lens, data_t(0));
+        context.sync_all_streams();
+        CUERR
+    }
 
     // scatter.show_plan();
 
-    TIMERSTART(scatter)
-    scatter.execAsync(srcs[main_gpu], mems_lens[main_gpu],
-                      dsts, mems_lens,
-                      bufs, bufs_lens,
-                      table[main_gpu]);
-    scatter.sync();
-    CUERR
-    TIMERSTOP(scatter)
-
-    TIMERSTART(validate_scatter)
-    for (gpu_id_t gpu = 0; gpu < num_gpus; gpu++) {
-        cudaSetDevice(context.get_device_id(gpu));
-        validate<<<256, 1024, 0, context.get_streams(gpu)[0]>>>
-            (dsts[gpu], table[main_gpu][gpu], gpu, part_hash);
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "scatter", 0, std::cout);
+        scatter.execAsync(srcs[main_gpu], mems_lens[main_gpu],
+                        dsts, mems_lens,
+                        bufs, bufs_lens,
+                        table[main_gpu]);
+        scatter.sync();
+        CUERR
     }
-    context.sync_all_streams();
-    CUERR
-    TIMERSTOP(validate_scatter)
+
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "validate_scatter", 0, std::cout);
+        for (gpu_id_t gpu = 0; gpu < num_gpus; gpu++) {
+            cudaSetDevice(context.get_device_id(gpu));
+            validate<<<256, 1024, 0, context.get_streams(gpu)[0]>>>
+                (dsts[gpu], table[main_gpu][gpu], gpu, part_hash);
+        }
+        context.sync_all_streams();
+        CUERR
+    }
 
     std::cout << '\n';
 
@@ -434,50 +458,54 @@ void run_multisplit_scatter_gather(
     std::vector<size_t> bufs_lens_gather = gather.calcBufferLengths(table[main_gpu]);
     print_buffer_sizes(bufs_lens_gather);
 
-    TIMERSTART(realloc_buffers)
-    for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
-        if(bufs_lens[gpu] < bufs_lens_gather[gpu]) {
-            bufs_lens[gpu] = bufs_lens_gather[gpu];
-            cudaSetDevice(context.get_device_id(gpu)); CUERR
-            cudaFree(bufs[gpu]); CUERR
-            cudaMalloc(&bufs[gpu], sizeof(data_t)*bufs_lens[gpu]); CUERR
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "realloc_buffers", 0, std::cout);
+        for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
+            if(bufs_lens[gpu] < bufs_lens_gather[gpu]) {
+                bufs_lens[gpu] = bufs_lens_gather[gpu];
+                cudaSetDevice(context.get_device_id(gpu)); CUERR
+                cudaFree(bufs[gpu]); CUERR
+                cudaMalloc(&bufs[gpu], sizeof(data_t)*bufs_lens[gpu]); CUERR
+            }
         }
     }
-    TIMERSTOP(realloc_buffers)
 
     // reset dsts and buffer to zero
-    TIMERSTART(reset_buffers_again)
-    memset_all(context, dsts, mems_lens, data_t(0));
-    memset_all(context, bufs, bufs_lens, data_t(0));
-    context.sync_all_streams();
-    CUERR
-    TIMERSTOP(reset_buffers_again)
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "reset_buffers_again", 0, std::cout);
+        memset_all(context, dsts, mems_lens, data_t(0));
+        memset_all(context, bufs, bufs_lens, data_t(0));
+        context.sync_all_streams();
+        CUERR
+    }
 
     // gather.show_plan();
 
-    TIMERSTART(gather)
-    gather.execAsync(srcs, mems_lens,
-                     dsts[main_gpu], mems_lens[main_gpu],
-                     bufs, bufs_lens,
-                     table[main_gpu]);
-    gather.sync();
-    CUERR
-    TIMERSTOP(gather)
-
-    TIMERSTART(validate_gather)
-    std::vector<data_t *> mems2(num_gpus, dsts[main_gpu]);
-    for (gpu_id_t trg = 1; trg < num_gpus; trg++) {
-        mems2[trg] = mems2[trg-1] + table[main_gpu][trg-1];
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "gather", 0, std::cout);
+        gather.execAsync(srcs, mems_lens,
+                        dsts[main_gpu], mems_lens[main_gpu],
+                        bufs, bufs_lens,
+                        table[main_gpu]);
+        gather.sync();
+        CUERR
     }
 
-    cudaSetDevice(context.get_device_id(main_gpu));
-    for (gpu_id_t gpu = 0; gpu < num_gpus; gpu++) {
-        validate<<<256, 1024, 0, context.get_streams(main_gpu)[0]>>>
-            (mems2[gpu], table[main_gpu][gpu], gpu, part_hash);
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "validate_gather", 0, std::cout);
+        std::vector<data_t *> mems2(num_gpus, dsts[main_gpu]);
+        for (gpu_id_t trg = 1; trg < num_gpus; trg++) {
+            mems2[trg] = mems2[trg-1] + table[main_gpu][trg-1];
+        }
+
+        cudaSetDevice(context.get_device_id(main_gpu));
+        for (gpu_id_t gpu = 0; gpu < num_gpus; gpu++) {
+            validate<<<256, 1024, 0, context.get_streams(main_gpu)[0]>>>
+                (mems2[gpu], table[main_gpu][gpu], gpu, part_hash);
+        }
+        context.sync_all_streams();
+        CUERR
     }
-    context.sync_all_streams();
-    CUERR
-    TIMERSTOP(validate_gather)
 
     // cleanup ----------------------------------------------------------------
     context.sync_hard();
@@ -513,29 +541,32 @@ void run_multisplit_broadcast(
     lens[main_gpu] = batch_size;
     const std::vector<size_t> mems_lens(num_gpus, batch_size_secure);
 
-    TIMERSTART(malloc_devices)
-    for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
-        cudaSetDevice(context.get_device_id(gpu)); CUERR
-        cudaMalloc(&srcs[gpu], sizeof(data_t)*mems_lens[gpu]); CUERR
-        cudaMalloc(&dsts[gpu], sizeof(data_t)*mems_lens[gpu]); CUERR
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "malloc_devices", 0, std::cout);
+        for (gpu_id_t gpu = 0; gpu < num_gpus; ++gpu) {
+            cudaSetDevice(context.get_device_id(gpu)); CUERR
+            cudaMalloc(&srcs[gpu], sizeof(data_t)*mems_lens[gpu]); CUERR
+            cudaMalloc(&dsts[gpu], sizeof(data_t)*mems_lens[gpu]); CUERR
+        }
     }
-    TIMERSTOP(malloc_devices)
 
-    TIMERSTART(zero_gpu_buffers)
-    memset_all(context, srcs, mems_lens, data_t(0));
-    memset_all(context, dsts, mems_lens, data_t(0));
-    context.sync_all_streams();
-    CUERR
-    TIMERSTOP(zero_gpu_buffers)
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "zero_gpu_buffers", 0, std::cout);
+        memset_all(context, srcs, mems_lens, data_t(0));
+        memset_all(context, dsts, mems_lens, data_t(0));
+        context.sync_all_streams();
+        CUERR
+    }
 
     // generate batch of data on main device
-    TIMERSTART(init_data)
-    cudaSetDevice(context.get_device_id(main_gpu));
-    generate_data<<<256, 1024, 0, context.get_streams(main_gpu)[0]>>>
-        (srcs[main_gpu], lens[main_gpu], size_t(0));
-    context.sync_all_streams();
-    CUERR
-    TIMERSTOP(init_data)
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "init_data", 0, std::cout);
+        cudaSetDevice(context.get_device_id(main_gpu));
+        generate_data<<<256, 1024, 0, context.get_streams(main_gpu)[0]>>>
+            (srcs[main_gpu], lens[main_gpu], size_t(0));
+        context.sync_all_streams();
+        CUERR
+    }
 
     // perform multisplit on main device
     auto part_hash = [=] HOSTDEVICEQUALIFIER (const data_t& x){
@@ -543,10 +574,11 @@ void run_multisplit_broadcast(
     };
 
     std::vector<std::vector<size_t>> table(num_gpus, std::vector<size_t>(num_gpus));
-    TIMERSTART(multisplit)
-    multisplit.execAsync(srcs, lens, dsts, lens, table, part_hash);
-    multisplit.sync();
-    TIMERSTOP(multisplit)
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "multisplit", 0, std::cout);
+        multisplit.execAsync(srcs, lens, dsts, lens, table, part_hash);
+        multisplit.sync();
+    }
 
     print_partition_table(table);
 
@@ -563,26 +595,28 @@ void run_multisplit_broadcast(
     for(auto& t : table[main_gpu])
         total += t;
 
-    TIMERSTART(broadcast)
-    broadcast.execAsync(srcs[main_gpu], mems_lens[main_gpu], total, dsts, mems_lens);
-    broadcast.sync();
-    TIMERSTOP(broadcast)
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "broadcast", 0, std::cout);
+        broadcast.execAsync(srcs[main_gpu], mems_lens[main_gpu], total, dsts, mems_lens);
+        broadcast.sync();
+    }
 
     std::vector<size_t> prefix(num_gpus+1);
     for (gpu_id_t part = 0; part < num_gpus; part++) {
         prefix[part+1] = prefix[part] + table[main_gpu][part];
     }
 
-    TIMERSTART(validate_broadcast)
-    for (gpu_id_t gpu = 0; gpu < num_gpus; gpu++) {
-        cudaSetDevice(context.get_device_id(gpu));
-        for (gpu_id_t part = 0; part < num_gpus; part++)
-            validate<<<256, 1024, 0, context.get_streams(gpu)[part]>>>
-                (dsts[gpu]+prefix[part], table[main_gpu][part], part, part_hash);
+    {
+        GpuTimer gtimer(context.get_streams(0)[0], "validate_broadcast", 0, std::cout);
+        for (gpu_id_t gpu = 0; gpu < num_gpus; gpu++) {
+            cudaSetDevice(context.get_device_id(gpu));
+            for (gpu_id_t part = 0; part < num_gpus; part++)
+                validate<<<256, 1024, 0, context.get_streams(gpu)[part]>>>
+                    (dsts[gpu]+prefix[part], table[main_gpu][part], part, part_hash);
+        }
+        context.sync_all_streams();
+        CUERR
     }
-    context.sync_all_streams();
-    CUERR
-    TIMERSTOP(validate_broadcast)
 
     std::cout << '\n';
 

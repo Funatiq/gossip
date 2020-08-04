@@ -1,9 +1,7 @@
-[submodule "include/cudahelpers"]
-	path = include/cudahelpers
-    url = https://github.com/gravitino/cudahelpers.git
-    ignore = dirty
-	branch = master
 [submodule "include/clipp"]
 	path = include/clipp
 	url = https://github.com/muellan/clipp.git
 	branch = master
+[submodule "include/hpc_helpers"]
+	path = include/hpc_helpers
+	url = https://gitlab.rlp.net/pararch/hpc_helpers

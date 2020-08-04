@@ -4,7 +4,6 @@
 #include <numeric>
 #include <stdexcept>
 
-#include "../cudahelpers/cuda_helpers.cuh"
 #include "config.h"
 #include "error_checking.hpp"
 
