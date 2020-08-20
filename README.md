@@ -7,7 +7,7 @@ Gossip was presented at [ICPP '19](https://dl.acm.org/citation.cfm?id=3337889).
 
 ## Using gossip
 
-To use gossip clone this repository and check out the submodule *cudahelpers* by calling `submodule update --init include/cudahelpers`. Include the header [gossip.cuh](include/gossip.cuh) in your project which provides all communication primitives. To parse transfer plans make use of the [plan parser](include/plan_parser.hpp) which can be compiled as a separate unit like in the example [Makefile](Makefile).
+To use gossip clone this repository and check out the submodule *hpc_helpers* by calling `git submodule update --init include/hpc_helpers`. Include the header [gossip.cuh](include/gossip.cuh) in your project which provides all communication primitives. To parse transfer plans make use of the [plan parser](include/plan_parser.hpp) which can be compiled as a separate unit like in the example [Makefile](Makefile).
 
 
 ## Examples
