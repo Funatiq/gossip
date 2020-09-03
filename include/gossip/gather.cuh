@@ -129,7 +129,7 @@ public:
 
     /**
      * Execute gather asynchronously using the given context.
-     * The lenghts of the parameters have to match the context.
+     * The lengths of the parameters have to match the context.
      * @param srcs pointers to source arrays. srcs[k] array should reside on device_ids[k].
      * @param srcs_len srcs_len[k] is length of srcs[k] array.
      * @param send_counts send_counts[k] elements are sent from device_ids[k].
