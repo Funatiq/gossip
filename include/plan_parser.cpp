@@ -26,7 +26,7 @@ parse_plan(const char* filename) {
         ifs >> json_plan;
     else {
         std::cerr << "error reading " << filename << std::endl;
-        auto plan = gossip::transfer_plan_t{type, num_gpus,transfer_sequences};
+        auto plan = gossip::transfer_plan_t{type, num_gpus, transfer_sequences};
         return plan;
     }
 
@@ -52,11 +52,14 @@ parse_plan(const char* filename) {
         num_chunks = *it;
 
     it = json_plan.find("plan");
-    if(it != json_plan.end())
+    if(it != json_plan.end()) {
         for(const auto& seq : *it) {
             transfer_sequences.push_back(seq);
             //TODO cut surplus items from seq
         }
+        if(transfer_sequences.back().size()-1 != num_steps)
+            std::cerr << "transfer sequence length does not match num steps!" << std::endl;
+    }
 
     it = json_plan.find("chunks");
     if(it != json_plan.end())
