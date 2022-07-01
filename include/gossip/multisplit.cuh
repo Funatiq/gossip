@@ -27,7 +27,7 @@ void binary_split(
         const value_t value = src[i];
 
         if (part_hash(value) == desired) {
-            const index_t j = atomicAggInc(counter);
+            const index_t j = helpers::atomicAggInc(counter);
             dst[j] = value;
         }
     }
@@ -57,7 +57,7 @@ void binary_split(
         const key_t key = src_keys[i];
 
         if (part_hash(key) == desired) {
-            const index_t j = atomicAggInc(counter);
+            const index_t j = helpers::atomicAggInc(counter);
             dst_keys[j] = key;
             dst_vals[j] = src_vals[i];
         }
